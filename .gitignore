@@ -1,0 +1,11 @@
+/aqua-bridge/target/
+/.env
+/.env.*
+!/.env.example
+/node_modules/
+/*.log
+/*.pcm
+/*.wav
+/account.json
+/history.json
+/settings.json

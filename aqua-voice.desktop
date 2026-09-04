@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Aqua Voice
+GenericName=Voice Dictation
+Comment=Open the Aqua Voice dictation controls
+Exec=omarchy-shell frankmi.aqua-voice open
+Icon=aqua-voice
+Terminal=false
+StartupNotify=false
+Categories=Utility;Accessibility;
+Keywords=Aqua;Voice;Dictation;Transcription;Speech;Microphone;

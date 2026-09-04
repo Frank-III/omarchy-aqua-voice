@@ -1,0 +1,7 @@
+{
+  "name": "aqua-voice-omarchy",
+  "private": true,
+  "scripts": {
+    "test": "bun test"
+  }
+}

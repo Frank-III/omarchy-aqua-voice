@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Aqua Voice Login Callback
+Comment=Store Aqua Voice login securely for the Omarchy plugin
+Exec=aqua-voice-control auth callback %u
+NoDisplay=true
+Terminal=false
+MimeType=x-scheme-handler/aquavoice;

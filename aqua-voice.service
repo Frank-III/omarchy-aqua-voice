@@ -1,0 +1,14 @@
+[Unit]
+Description=Aqua Voice realtime JavaScript backend
+After=graphical-session.target pipewire.service
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/lib/aqua-voice/aqua-bridge
+Restart=on-failure
+RestartSec=2s
+TimeoutStopSec=3s
+
+[Install]
+WantedBy=graphical-session.target
