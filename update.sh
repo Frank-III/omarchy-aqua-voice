@@ -16,15 +16,22 @@ command -v omarchy >/dev/null || { echo "omarchy is required" >&2; exit 1; }
 
 bun test
 omarchy plugin validate .
-./install.sh
 
-if [[ -d "$PLUGIN_DIR/.git" ]]; then
-  git -C "$PLUGIN_DIR" remote set-url origin "file://$ROOT"
-  omarchy plugin update frankmi.aqua-voice --yes
-else
-  omarchy plugin add "file://$ROOT" --enable
+if [[ "$(realpath "$ROOT")" != "$(realpath -m "$PLUGIN_DIR")" ]]; then
+  if [[ -d "$PLUGIN_DIR/.git" ]]; then
+    if [[ -n $(git -C "$PLUGIN_DIR" status --porcelain) ]]; then
+      echo "Installed plugin has local changes; preserve or commit them before updating." >&2
+      exit 1
+    fi
+    # Import this checked-out commit without replacing the public origin URL.
+    git -C "$PLUGIN_DIR" fetch "$ROOT" HEAD
+    git -C "$PLUGIN_DIR" merge --ff-only FETCH_HEAD
+  else
+    omarchy plugin add "$(git remote get-url origin)" --enable
+  fi
 fi
 
+./install.sh
 systemctl --user restart aqua-voice.service
 omarchy restart shell
 

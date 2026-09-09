@@ -29,7 +29,7 @@ Item {
     anchors.right: parent.right
     anchors.top: parent.top
     title: "Dictate"
-    subtitle: online ? "Aqua realtime · direct WebSocket" : "Backend stopped · settings remain available"
+    subtitle: online ? "Speak naturally. Aqua writes it for you." : "Backend stopped · settings remain available"
     foreground: root.foreground
     fontFamily: root.fontFamily
   }
@@ -105,16 +105,16 @@ Item {
           width: parent.width
           spacing: Style.space(8)
           Button {
-            width: root.recording ? (parent.width - parent.spacing) * 0.68 : parent.width
+            width: root.recording || root.processing ? (parent.width - parent.spacing) * 0.68 : parent.width
             text: !root.online ? "Start backend" : (root.recording ? "Finish dictation" : "Start dictation")
-            enabled: !root.processing
+            enabled: !root.processing && (!root.online || root.recording || (root.svc && root.svc.tokenPresent))
             onClicked: {
               if (!root.online) root.actionRequested(["start"])
               else root.actionRequested(["trigger", root.recording ? "stop" : "start"])
             }
           }
           Button {
-            visible: root.recording
+            visible: root.recording || root.processing
             width: (parent.width - parent.spacing) * 0.32
             text: "Cancel"
             onClicked: root.actionRequested(["trigger", "cancel"])
@@ -156,7 +156,7 @@ Item {
 
       Text {
         width: parent.width
-        text: "The Electron frontend is not used. Audio streams directly from PipeWire to Aqua and is never saved."
+        text: "Audio is sent to Aqua for transcription and is not saved on this device."
         color: Util.alpha(root.foreground, 0.42)
         font.family: root.fontFamily
         font.pixelSize: Style.font.caption

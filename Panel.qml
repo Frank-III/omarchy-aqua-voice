@@ -16,6 +16,9 @@ Panel {
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
   property string page: "dictate"
   property string actionInput: ""
+  property string actionMessage: ""
+  property bool actionFailed: false
+  property var actionOwner: null
 
   readonly property string phase: svc ? svc.phase : "offline"
   readonly property bool online: phase !== "offline"
@@ -34,6 +37,7 @@ Panel {
     if (processing) return "Transcribing · " + Math.floor((svc ? svc.processingMs : 0) / 1000) + "s"
     if (complete) return svc && svc.completion ? svc.completion : "Complete"
     if (phase === "error") return "Needs attention"
+    if (!svc || !svc.tokenPresent) return "Sign in to dictate"
     return "Ready"
   }
   readonly property string statusDetail: {
@@ -41,8 +45,9 @@ Panel {
     if (phase === "armed") return "Second tap starts hands-free dictation"
     if (recording) return svc && svc.liveText ? svc.liveText : "Tap once when you are done"
     if (processing) return svc && svc.stage ? String(svc.stage).replace(/-/g, " ") : "Waiting for Aqua"
-    if (complete) return svc ? svc.latestTranscript : ""
+    if (complete) return svc && svc.completion !== "No text returned" && svc.completion !== "Too short" ? svc.latestTranscript : ""
     if (phase === "error") return svc ? svc.lastError : "Unknown error"
+    if (!svc || !svc.tokenPresent) return "Open Account to sign in to Aqua Voice"
     return "Double-tap " + (svc ? svc.hotkeyDisplay : "Shift+Super+F23")
   }
 
@@ -57,6 +62,9 @@ Panel {
   }
   function run(args, input) {
     if (action.running) return
+    actionMessage = ""
+    actionOwner = currentPage
+    if ((args[0] === "trigger" && (args[1] === "paste-last" || args[1] === "start")) || args[0] === "paste-history") root.close()
     actionInput = typeof input === "string" ? input : ""
     action.stdinEnabled = actionInput !== ""
     action.command = [control].concat(args)
@@ -93,7 +101,12 @@ Panel {
     stdout: StdioCollector {}
     stderr: StdioCollector {}
     onStarted: if (root.actionInput !== "") write(root.actionInput + "\n")
-    onExited: {
+    onExited: function(exitCode) {
+      var payload = null
+      try { payload = JSON.parse(exitCode === 0 ? action.stdout.text : action.stderr.text) } catch (_) {}
+      root.actionFailed = exitCode !== 0 || Boolean(payload && payload.ok === false)
+      root.actionMessage = root.actionFailed ? (payload && payload.error ? String(payload.error) : "Action failed. Please try again.") : "Done"
+      if (root.actionOwner && typeof root.actionOwner.actionFinished === "function") root.actionOwner.actionFinished(!root.actionFailed)
       stdinEnabled = false
       root.actionInput = ""
       if (root.svc) refreshDelay.restart()
@@ -252,7 +265,9 @@ Panel {
         anchors.leftMargin: Style.space(14)
         anchors.right: parent.right
         anchors.top: parent.top
-        anchors.bottom: parent.bottom
+        anchors.bottom: actionNotice.top
+        anchors.bottomMargin: actionNotice.visible ? Style.space(10) : 0
+        enabled: !action.running
 
         AquaHomePage { id: dictatePage; anchors.fill: parent; visible: root.page === "dictate"; svc: root.svc; foreground: root.fg; fontFamily: root.fontFamily; statusTitle: root.statusTitle; statusDetail: root.statusDetail; onActionRequested: function(args) { root.run(args) } }
         AquaHistoryPage {
@@ -283,6 +298,22 @@ Panel {
         AquaSettingsPage { id: settingsPage; anchors.fill: parent; visible: root.page === "settings"; svc: root.svc; foreground: root.fg; fontFamily: root.fontFamily; actionBusy: action.running; onActionRequested: function(args) { root.run(args) } }
         AquaSystemPage { id: systemPage; anchors.fill: parent; visible: root.page === "system"; svc: root.svc; foreground: root.fg; fontFamily: root.fontFamily; onActionRequested: function(args) { root.run(args) } }
       }
+      Text {
+        id: actionNotice
+        anchors.left: railRule.right
+        anchors.leftMargin: Style.space(14)
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        height: visible ? implicitHeight : 0
+        visible: action.running || root.actionMessage !== ""
+        text: action.running ? "Working…" : root.actionMessage
+        textFormat: Text.PlainText
+        color: root.actionFailed ? Color.urgent : Util.alpha(root.fg, 0.65)
+        font.family: root.fontFamily
+        font.pixelSize: Style.font.bodySmall
+        wrapMode: Text.Wrap
+      }
+
     }
   }
 

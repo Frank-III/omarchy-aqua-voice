@@ -21,7 +21,7 @@ Item {
     mask: Region {}
 
     BorderSurface {
-      width: Style.space(158)
+      width: Math.max(Style.space(158), hudContent.implicitWidth + Style.space(24))
       height: Style.space(34)
       anchors.horizontalCenter: parent.horizontalCenter
       anchors.bottom: parent.bottom
@@ -31,6 +31,7 @@ Item {
       radius: height / 2
 
       Row {
+        id: hudContent
         anchors.centerIn: parent
         spacing: Style.space(7)
 
@@ -68,7 +69,7 @@ Item {
           anchors.verticalCenter: parent.verticalCenter
           text: root.recording ? "Recording"
             : (service && service.phase === "complete" ? service.completion
-              : (service && service.phase === "error" ? "No speech · retry"
+              : (service && service.phase === "error" ? "Dictation failed"
                 : (service && String(service.stage).indexOf("retry") >= 0 ? "Retrying Aqua…"
                   : "Transcribing · " + Math.floor((service ? service.processingMs : 0) / 1000) + "s")))
           color: service && service.phase === "error" ? Color.urgent : Color.popups.text

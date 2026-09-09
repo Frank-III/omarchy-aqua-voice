@@ -49,12 +49,20 @@ Item {
   property var dictionary: []
   property int replacementCount: 0
   property bool customInstructionsConfigured: false
+  property string backendVersion: ""
+  property bool websocketConnected: false
+  property var supportedLanguages: []
+  property var replacements: []
+  property string customInstructions: ""
+  property string customizationSyncedAt: ""
   property int wordCount: 0
   property var history: []
 
   function applyState(text) {
     try {
       var state = JSON.parse(String(text || "{}"))
+      backendVersion = String(state.version || "")
+      websocketConnected = state.connected === true
       phase = String(state.phase || "offline")
       stage = String(state.stage || "")
       completion = String(state.completion || "")
@@ -78,6 +86,10 @@ Item {
       lastLatencyMs = Number(state.lastLatencyMs || 0)
       lastAudioMs = Number(state.lastAudioMs || 0)
       var config = state.settings || {}
+      supportedLanguages = config.supportedLanguages || []
+      replacements = config.replacements || []
+      customInstructions = String(config.customInstructions || "")
+      customizationSyncedAt = String(config.customizationSyncedAt || "")
       language = String(config.language || "en")
       savedLanguages = Array.isArray(config.savedLanguages) ? config.savedLanguages : [language]
       transcriptionModel = String(config.transcriptionModel || "avalon-v1.1")

@@ -6,7 +6,7 @@ Static inspection target: Aqua Voice macOS 0.19.8, extracted Electron renderer a
 
 - Dictation lifecycle: idle, double-tap armed, recording, processing, pasted/copied, error.
 - Compact floating HUD, tray status, finish/cancel, paste-last, and focus-aware Hyprland paste.
-- Language selection from Aqua's saved languages.
+- Searchable language selection using Aqua's recovered language enum; selected languages are saved locally.
 - Privacy Mode and Continual Learning, including their mutual exclusion.
 - Refined/skip-LLM transcription and Casual Messaging. These fields are sent in Aqua's realtime `start` payload.
 - Current model and realtime audio mode visibility.
@@ -15,15 +15,29 @@ Static inspection target: Aqua Voice macOS 0.19.8, extracted Electron renderer a
 - Account-synced Dictionary list with add and confirmed-remove actions.
 - Browser sign-in, secure callback handling, keyring token storage, account status, and logout.
 - One-shot global hotkey recording with XKB-aware modifier normalization and managed Hyprland binding rollback.
-- Replacement and Custom Instruction counts/status without exposing their contents.
+- Account-backed replacement and writing-instruction editors, with visible failures and draft preservation.
 
 ## Account-backed features still read-only
 
-- Editing Replacements.
-- Editing Custom Instructions.
 - Cloud history search, ratings, and feedback.
 
-The Mac renderer shows these features, but their local settings are not the whole source of truth. The plugin will not pretend an edit succeeded until the account synchronization endpoints are understood and tested.
+Cloud history is not implemented. Local history is labeled explicitly.
+
+## Personalization contracts verified against the extracted app
+
+Source: `/home/frankmi/aqua-voice-linux/asar-extracted/.webpack/main/index.js` and the corresponding renderer bundle, version 0.19.8.
+
+- `POST /users/transcript-customizations/` accepts `{operation:{type:"replacement_upsert",replacement:{from,to,preserveCase?,neverAddPunctuation?},oldFrom?}}` and `{operation:{type:"replacement_remove",from}}`.
+- Writing instructions use `{customizations:{customInstructions:text}}`; an empty string clears them.
+- The renderer defaults `preserveCase` to true when absent, and `neverAddPunctuation` to false.
+- Server responses must contain a complete customization document before updating the local cache. Revisions prevent an older response from replacing a newer one.
+- Tests cover operation shapes, authenticated HTTP request construction, language persistence, failed/malformed responses preserving local settings, and instruction clearing. An authenticated live GET succeeded; no test personalization was written to the real account.
+
+## Status and interaction
+
+- Errors from UI actions are shown; drafts clear only after successful saves.
+- WebSocket state comes from the backend connection, account check timestamps are shown, and local word totals are calculated from local history.
+- The user prefers the original decorative recording animation. It is retained as a recording indicator, not presented as an audio meter.
 
 ## Intentionally omitted macOS-only features
 

@@ -25,7 +25,7 @@ Item {
     anchors.right: parent.right
     anchors.top: parent.top
     title: "Account"
-    subtitle: root.connected ? "Connected securely" : "Connect your Aqua subscription"
+    subtitle: root.connected ? "Sign-in token saved" : "Connect your Aqua subscription"
     foreground: root.foreground
     fontFamily: root.fontFamily
   }
@@ -101,7 +101,7 @@ Item {
           visible: root.connected
           width: parent.width
           label: "Plan"
-          value: root.svc && root.svc.accountPlan ? root.svc.accountPlan : "Connected"
+          value: root.svc && root.svc.accountPlan ? root.svc.accountPlan : "Not available"
           foreground: root.foreground
           fontFamily: root.fontFamily
           valueBold: true
@@ -109,8 +109,8 @@ Item {
         AquaInfoRow {
           visible: root.connected
           width: parent.width
-          label: "Token storage"
-          value: "Secret Service keyring"
+          label: "Last account check"
+          value: root.svc && root.svc.accountValidatedAt ? Qt.formatDateTime(new Date(root.svc.accountValidatedAt), "MMM d, yyyy hh:mm") : "Not checked"
           foreground: root.foreground
           fontFamily: root.fontFamily
         }
@@ -135,29 +135,11 @@ Item {
         }
       }
 
-      AquaCard {
+      Button {
         width: parent.width
-        foreground: root.foreground
-        PanelSectionHeader {
-          text: "Secure callback"
-          foreground: root.foreground
-          fontFamily: root.fontFamily
-        }
-        AquaInfoRow {
-          width: parent.width
-          label: "Handler"
-          value: "aquavoice://token=…"
-          foreground: root.foreground
-          fontFamily: root.fontFamily
-        }
-        Text {
-          width: parent.width
-          text: "The callback token is validated against Aqua before storage. It is sent to secret-tool over stdin, never printed by the plugin, and removed from the legacy settings file."
-          color: Util.alpha(root.foreground, 0.45)
-          font.family: root.fontFamily
-          font.pixelSize: Style.font.caption
-          wrapMode: Text.WordWrap
-        }
+        visible: root.connected
+        text: "Refresh account"
+        onClicked: root.actionRequested(["auth", "refresh"])
       }
     }
   }

@@ -6,11 +6,18 @@ SETTINGS="${AQUA_SETTINGS_BIN:-$HOME/.local/lib/aqua-voice/aqua-settings.js}"
 AUTH="${AQUA_AUTH_BIN:-$HOME/.local/lib/aqua-voice/aqua-auth.js}"
 HOTKEY="${AQUA_HOTKEY_BIN:-$HOME/.local/lib/aqua-voice/aqua-hotkey.js}"
 
+RUNTIME="${AQUA_RUNTIME_BIN:-$HOME/.local/lib/aqua-voice/runtime}"
+run_js() {
+  if [[ -x "$RUNTIME" ]]; then "$RUNTIME" "$@"
+  else bun "$@"
+  fi
+}
+
 offline_status() {
   local snapshot auth hotkey
-  snapshot=$("$SETTINGS" status)
-  auth=$("$AUTH" status)
-  hotkey=$("$HOTKEY" status)
+  snapshot=$(run_js "$SETTINGS" status)
+  auth=$(run_js "$AUTH" status)
+  hotkey=$(run_js "$HOTKEY" status)
   jq -cn --argjson snapshot "$snapshot" --argjson auth "$auth" --argjson hotkey "$hotkey" \
     '{ok:false,phase:"offline",recording:false,processing:false,hotkeyReady:false,hotkeyTaps:0,hotkeyDisplay:$hotkey.hotkey.display,microphone:"PipeWire default",pasteWithShift:false,tokenPresent:$auth.connected,account:$auth.account,latestTranscript:"",error:"Backend is not running",settings:$snapshot.settings,history:$snapshot.history}'
 }
@@ -19,34 +26,38 @@ case "${1:-status}" in
   start) systemctl --user start aqua-voice.service ;;
   stop) systemctl --user stop aqua-voice.service ;;
   restart) systemctl --user restart aqua-voice.service ;;
-  status) "$BRIDGE" status 2>/dev/null || offline_status ;;
-  trigger) "$BRIDGE" "${2:?tap|start|stop|cancel|paste-last}" ;;
-  copy-history) "$BRIDGE" "copy-history:${2:?history entry id}" ;;
-  paste-history) "$BRIDGE" "paste-history:${2:?history entry id}" ;;
+  status) run_js "$BRIDGE" status 2>/dev/null || offline_status ;;
+  trigger) run_js "$BRIDGE" "${2:?tap|start|stop|cancel|paste-last}" ;;
+  copy-history) run_js "$BRIDGE" "copy-history:${2:?history entry id}" ;;
+  paste-history) run_js "$BRIDGE" "paste-history:${2:?history entry id}" ;;
+  customize)
+    IFS= read -r mutation
+    printf '%s' "$mutation" | run_js "$SETTINGS" customize
+    ;;
   dictionary)
     action="${2:?add|remove|sync}"
     if [[ "$action" == "sync" ]]; then
-      "$SETTINGS" sync-customizations
+      run_js "$SETTINGS" sync-customizations
     elif [[ "$action" == "add" || "$action" == "remove" ]]; then
       IFS= read -r word
-      printf '%s' "$word" | "$SETTINGS" "dictionary-$action"
+      printf '%s' "$word" | run_js "$SETTINGS" "dictionary-$action"
     else
       echo "dictionary action must be add, remove, or sync" >&2
       exit 2
     fi
     ;;
-  settings) "$SETTINGS" "${2:-status}" "${3:-}" "${4:-}" ;;
+  settings) run_js "$SETTINGS" "${2:-status}" "${3:-}" "${4:-}" ;;
   auth)
     action="${2:-status}"
     if [[ "$action" == "callback" ]]; then
-      printf '%s' "${3:?callback URL}" | "$AUTH" callback-stdin
+      printf '%s' "${3:?callback URL}" | run_js "$AUTH" callback-stdin
     else
-      "$AUTH" "$action"
+      run_js "$AUTH" "$action"
     fi
     ;;
-  record-hotkey) "$HOTKEY" capture ;;
-  hotkey) "$HOTKEY" "${2:-status}" ;;
-  clear-history) "$BRIDGE" clear-history 2>/dev/null || "$SETTINGS" clear-history ;;
+  record-hotkey) run_js "$HOTKEY" capture ;;
+  hotkey) run_js "$HOTKEY" "${2:-status}" ;;
+  clear-history) run_js "$BRIDGE" clear-history 2>/dev/null || run_js "$SETTINGS" clear-history ;;
   log) journalctl --user -u aqua-voice.service -n "${2:-100}" --no-pager ;;
   *) echo "usage: aqua-voice-control start|stop|restart|status|trigger <start|stop|cancel>|copy-history <id>|paste-history <id>|dictionary <add|remove|sync>|settings <status|set|toggle>|auth <status|login|callback|migrate|logout>|record-hotkey|hotkey [status|ensure]|clear-history|log [lines]" >&2; exit 2 ;;
 esac

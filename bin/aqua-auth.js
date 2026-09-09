@@ -24,10 +24,14 @@ function parseCallbackUrl(input) {
 
 async function validateToken(token) {
   const response = await fetch("https://core.aquavoice.com/users/profile/", {
+    signal: AbortSignal.timeout(15000),
     headers: { Authorization: `Bearer ${token}` },
   });
   const profile = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(`Aqua account validation failed (${response.status})`);
+  if (typeof profile.email !== "string" || !profile.email.trim()) {
+    throw new Error("Aqua returned an invalid account profile");
+  }
   return {
     email: typeof profile.email === "string" ? profile.email : "",
     name: typeof profile.name === "string" ? profile.name : "",
@@ -36,7 +40,8 @@ async function validateToken(token) {
 }
 
 function restartBackend() {
-  Bun.spawnSync(["systemctl", "--user", "restart", "aqua-voice.service"]);
+  const result = Bun.spawnSync(["systemctl", "--user", "restart", "aqua-voice.service"]);
+  if (!result.success) throw new Error("Login state updated, but the Aqua backend could not restart. Start it from System.");
 }
 
 async function saveValidatedToken(token) {
@@ -80,9 +85,15 @@ if (import.meta.main) {
   try {
     const command = process.argv[2] || "status";
     if (command === "status") console.log(JSON.stringify(safeStatus()));
+    else if (command === "refresh") {
+      const token = readAquaToken(readAquaSettings(), true);
+      if (!token) throw new Error("Sign in to refresh your account");
+      writeAccountMetadata(await validateToken(token));
+      console.log(JSON.stringify(safeStatus()));
+    }
     else if (command === "login") {
       const child = Bun.spawn(["xdg-open", signInUrl], { stdin: "ignore", stdout: "ignore", stderr: "ignore" });
-      child.unref();
+      if ((await child.exited) !== 0) throw new Error("Could not open the browser. Open https://aquavoice.com/sign-in?origin=desktop to sign in.");
       console.log(JSON.stringify({ ok: true, opened: true }));
     } else if (command === "callback-stdin") {
       const token = parseCallbackUrl(await Bun.stdin.text());

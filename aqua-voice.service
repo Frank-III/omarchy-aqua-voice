@@ -5,7 +5,7 @@ PartOf=graphical-session.target
 
 [Service]
 Type=simple
-ExecStart=%h/.local/lib/aqua-voice/aqua-bridge
+ExecStart=%h/.local/lib/aqua-voice/runtime %h/.local/lib/aqua-voice/aqua-bridge
 Restart=on-failure
 RestartSec=2s
 TimeoutStopSec=3s

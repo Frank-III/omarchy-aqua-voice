@@ -10,25 +10,11 @@ Item {
   property string fontFamily: Style.font.family
   property bool actionBusy: false
   property bool hotkeyCaptureRequested: false
-  readonly property bool editing: false
+  readonly property bool editing: languagePicker.popupOpen
   signal actionRequested(var args)
 
   onActionBusyChanged: if (!actionBusy) hotkeyCaptureRequested = false
 
-  function languageName(code) {
-    if (code === "auto") return "Auto-detect"
-    if (code === "en") return "English"
-    if (code === "cmn") return "Chinese (Mandarin)"
-    if (code === "yue") return "Chinese (Cantonese)"
-    return String(code || "Unknown").toUpperCase()
-  }
-  function nextLanguage() {
-    var languages = svc && svc.savedLanguages ? svc.savedLanguages : []
-    if (languages.length < 2) return
-    var current = languages.indexOf(svc.language)
-    var next = languages[(current + 1) % languages.length]
-    root.actionRequested(["settings", "set", "language", String(next)])
-  }
   function toggle(key) { root.actionRequested(["settings", "toggle", key]) }
   function scrollBy(delta) {
     var flick = scrollArea.contentItem
@@ -42,7 +28,7 @@ Item {
     anchors.right: parent.right
     anchors.top: parent.top
     title: "Settings"
-    subtitle: "Portable controls verified in Aqua's realtime protocol"
+    subtitle: "Language, shortcut, and transcription preferences"
     foreground: root.foreground
     fontFamily: root.fontFamily
   }
@@ -68,11 +54,15 @@ Item {
         width: parent.width
         foreground: root.foreground
         PanelSectionHeader { text: "Dictation"; foreground: root.foreground; fontFamily: root.fontFamily }
-        Button {
+        SearchableDropdown {
+          id: languagePicker
           width: parent.width
-          text: "Language    " + root.languageName(root.svc ? root.svc.language : "en")
-          enabled: root.svc && root.svc.savedLanguages.length > 1
-          onClicked: root.nextLanguage()
+          label: "Language"
+          value: root.svc ? root.svc.language : "en"
+          options: root.svc ? root.svc.supportedLanguages : []
+          foreground: root.foreground
+          fontFamily: root.fontFamily
+          onChanged: function(value) { root.actionRequested(["settings", "set", "language", value]) }
         }
         AquaInfoRow { width: parent.width; label: "Model"; value: root.svc ? root.svc.transcriptionModel : "avalon-v1.1"; foreground: root.foreground; fontFamily: root.fontFamily; valueBold: true }
         AquaInfoRow { width: parent.width; label: "Realtime"; value: "Always · 16 kHz mono PCM"; foreground: root.foreground; fontFamily: root.fontFamily }
@@ -101,7 +91,7 @@ Item {
         }
         Text {
           width: parent.width
-          text: "Capture runs for 15 seconds and then exits. Choosing an existing shortcut replaces that Hyprland binding; the previous bindings file is backed up once."
+          text: "Choose an unused shortcut within 15 seconds. Existing bindings for that chord will be replaced. Escape keeps the current shortcut."
           color: Util.alpha(root.foreground, 0.45)
           font.family: root.fontFamily
           font.pixelSize: Style.font.caption
@@ -159,7 +149,7 @@ Item {
         AquaInfoRow { width: parent.width; label: "Custom Instructions"; value: root.svc && root.svc.customInstructionsConfigured ? "Configured" : "Not set"; foreground: root.foreground; fontFamily: root.fontFamily }
         Text {
           width: parent.width
-          text: "Manage account-synced words on the Dictionary page. Replacements and Custom Instructions remain read-only until their editors are implemented."
+          text: "Edit words, replacements, and writing instructions on the Dictionary page."
           color: Util.alpha(root.foreground, 0.44)
           font.family: root.fontFamily
           font.pixelSize: Style.font.caption

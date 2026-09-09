@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { createDelivery, finishSocket, audioFrame, displayText, focusIsStable, gestureDecision, isTerminalClass, isTrackedHotkeyCode, pasteCommand, pasteShortcut, shouldRetryFinalization, startPayload } from "../bin/aqua-bridge.js";
-import { normalizeTranscriptCustomizations, publicSettings, shouldApplyCustomizationRevision } from "../bin/aqua-settings.js";
+import { customizationRequest, normalizeTranscriptCustomizations, publicSettings, shouldApplyCustomizationRevision } from "../bin/aqua-settings.js";
 import { parseCallbackUrl, signInUrl } from "../bin/aqua-auth.js";
 import { defaultHotkeyConfig, hotkeyMatches, normalizeModifiers, replaceManagedBinding } from "../bin/aqua-hotkey.js";
 
@@ -261,4 +261,26 @@ test("real WebSocket receives delivery stop before server-initiated close", asyn
     socket.close();
     await server.stop(true);
   }
+});
+
+
+describe("account personalization", () => {
+  test("uses recovered replacement operations without overwriting other settings", () => {
+    expect(customizationRequest({ type: "replacement_upsert", oldFrom: " old ", replacement: { from: " aq ", to: " Aqua ", preserveCase: true, neverAddPunctuation: false } })).toEqual({ operation: { type: "replacement_upsert", oldFrom: "old", replacement: { from: "aq", to: "Aqua", preserveCase: true, neverAddPunctuation: false } } });
+    expect(customizationRequest({ type: "replacement_remove", from: " aq " })).toEqual({ operation: { type: "replacement_remove", from: "aq" } });
+    expect(() => customizationRequest({ type: "replacement_upsert", replacement: { from: "", to: "text" } })).toThrow();
+    expect(() => customizationRequest(null)).toThrow();
+  });
+  test("supports clearing instructions using the recovered partial patch", () => {
+    expect(customizationRequest({ type: "custom_instructions", text: "" })).toEqual({ customizations: { customInstructions: "" } });
+    expect(customizationRequest({ type: "custom_instructions", text: "Keep\nparagraphs." })).toEqual({ customizations: { customInstructions: "Keep\nparagraphs." } });
+  });
+  test("exposes actual personalization and recovered language choices", () => {
+    const visible = publicSettings({ replacements: [{ from: "aq", to: "Aqua" }], customInstructions: "Brief.", token: "hidden" });
+    expect(visible.replacements).toEqual([{ from: "aq", to: "Aqua" }]);
+    expect(visible.customInstructions).toBe("Brief.");
+    expect(visible.supportedLanguages.find((language) => language.value === "yue").label).toBe("Chinese (Cantonese)");
+    expect(visible.supportedLanguages.some((language) => language.value === "ja")).toBe(true);
+    expect(visible.token).toBeUndefined();
+  });
 });

@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 
-import { createReadStream, existsSync, unlinkSync } from "node:fs";
+import { accessSync, constants, createReadStream, existsSync, unlinkSync } from "node:fs";
 import {
   appendHistoryEntry,
   clearHistory,
@@ -13,7 +13,7 @@ import {
 } from "./aqua-settings.js";
 import { hotkeyMatches, readHotkeyConfig, readKbOptions } from "./aqua-hotkey.js";
 
-const VERSION = "0.10.0";
+const VERSION = "1.0.1";
 const DOUBLE_TAP_MS = 650;
 const PHYSICAL_DEBOUNCE_MS = 80;
 const MIN_CAPTURE_MS = 100;
@@ -481,7 +481,7 @@ function startPayload(config, target) {
     microphone: "PipeWire default",
     context: { app: target?.class || "" },
     is_trial: false,
-    transcription_model: config.transcriptionModel,
+    transcription_model: config.transcriptionModel || "avalon-v1.1",
     fast_llm_model: config.fastLLMModel || undefined,
     prompt_set: config.promptSet || undefined,
     streaming_model: config.streamingModel || undefined,
@@ -681,8 +681,10 @@ function startControlServer() {
 }
 
 function readInput(path) {
+  let opened = false;
   const stream = createReadStream(path);
   inputStreams.set(path, stream);
+  stream.on("open", () => { opened = true; });
   let pending = Buffer.alloc(0);
   stream.on("data", (chunk) => {
     pending = Buffer.concat([pending, chunk]);
@@ -711,8 +713,10 @@ function readInput(path) {
   });
   const disconnected = () => {
     inputStreams.delete(path);
-    heldHotkeyCodes.clear();
-    if (state.phase === "armed" || state.phase === "recording") cancel();
+    if (opened) {
+      heldHotkeyCodes.clear();
+      if (state.phase === "armed" || state.phase === "recording") cancel();
+    }
   };
   stream.on("close", disconnected);
   stream.on("error", disconnected);
@@ -733,9 +737,11 @@ function scanInputs() {
   }
   for (let index = 0; index < 64; index++) {
     const path = `/dev/input/event${index}`;
-    if (existsSync(path) && !inputStreams.has(path)) readInput(path);
+    if (inputStreams.has(path)) continue;
+    try { accessSync(path, constants.R_OK); } catch { continue; }
+    readInput(path);
   }
-  state.hotkeyReady = inputStreams.size > 0;
+  state.hotkeyReady = [...inputStreams.values()].some((stream) => !stream.pending && !stream.destroyed);
 }
 
 async function runClient(command) {

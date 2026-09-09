@@ -9,15 +9,21 @@ Item {
   property color foreground: Color.popups.text
   property string fontFamily: Style.font.family
   property string pendingRemove: ""
-  readonly property bool editing: addField.activeFocus
+  property bool pendingAdd: false
+  readonly property bool editing: addField.activeFocus || personalization.editing
   signal actionRequested(var args, string input)
 
   function addWord() {
     var word = addField.text.trim()
     if (word.length < 1 || word.length > 100) return
+    pendingAdd = true
     root.actionRequested(["dictionary", "add"], word)
-    addField.text = ""
-    addField.focus = false
+  }
+
+  function actionFinished(ok) {
+    if (ok && pendingAdd) { addField.text = ""; addField.focus = false }
+    pendingAdd = false
+    personalization.actionFinished(ok)
   }
 
   function removeWord(word) {
@@ -41,7 +47,7 @@ Item {
     anchors.right: parent.right
     anchors.top: parent.top
     title: "Dictionary"
-    subtitle: (root.svc ? root.svc.dictionaryCount : 0) + " Aqua account words · synced with core.aquavoice.com"
+    subtitle: root.svc && root.svc.customizationSyncedAt ? "Last synced " + Qt.formatDateTime(new Date(root.svc.customizationSyncedAt), "MMM d, hh:mm") : "Account personalization · not synced yet"
     foreground: root.foreground
     fontFamily: root.fontFamily
     Button {
@@ -103,13 +109,13 @@ Item {
           Button {
             id: addButton
             text: "Add"
-            enabled: addField.text.trim().length > 0
+            enabled: root.svc && root.svc.tokenPresent && addField.text.trim().length > 0
             onClicked: root.addWord()
           }
         }
         Text {
           width: parent.width
-          text: "Changes use Aqua's authenticated transcript-customizations API and affect future dictations on your account."
+          text: "Names and technical terms help Aqua recognize the words you use. Changes apply to future dictations on your account."
           color: Util.alpha(root.foreground, 0.45)
           font.family: root.fontFamily
           font.pixelSize: Style.font.caption
@@ -165,6 +171,15 @@ Item {
         font.pixelSize: Style.font.body
         horizontalAlignment: Text.AlignHCenter
       }
+      AquaPersonalization {
+        id: personalization
+        width: parent.width
+        svc: root.svc
+        foreground: root.foreground
+        fontFamily: root.fontFamily
+        onActionRequested: function(args, input) { root.actionRequested(args, input) }
+      }
+
     }
   }
 }

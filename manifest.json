@@ -2,11 +2,15 @@
   "schemaVersion": 1,
   "id": "frankmi.aqua-voice",
   "name": "Aqua Voice",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "author": "Frank M",
   "license": "MIT",
   "description": "Omarchy-native Aqua Voice dictation with a realtime JavaScript backend and no Electron frontend.",
-  "kinds": ["service", "bar-widget", "panel"],
+  "kinds": [
+    "service",
+    "bar-widget",
+    "panel"
+  ],
   "keepLoaded": true,
   "activation": "on-demand",
   "entryPoints": {
@@ -18,18 +22,13 @@
     "displayName": "Aqua Voice",
     "description": "Record, transcribe, paste, and inspect Aqua Voice state directly from the Omarchy bar.",
     "category": "AI",
-    "aliases": ["aqua", "voice", "dictation", "speech to text"],
+    "aliases": [
+      "aqua",
+      "voice",
+      "dictation",
+      "speech to text"
+    ],
     "allowMultiple": false,
-    "defaultSection": "right",
-    "defaults": { "refreshIntervalSec": 2 },
-    "schema": [{
-      "key": "refreshIntervalSec",
-      "type": "integer",
-      "label": "Refresh interval (seconds)",
-      "min": 1,
-      "max": 30,
-      "step": 1,
-      "defaultValue": 2
-    }]
+    "defaultSection": "right"
   }
 }

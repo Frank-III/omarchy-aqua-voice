@@ -16,6 +16,13 @@ const settingsPath = process.env.AQUA_SETTINGS_PATH || `${home}/.config/Aqua Voi
 const historyPath = process.env.AQUA_HISTORY_PATH || `${home}/.local/state/aqua-voice/history.json`;
 const accountPath = process.env.AQUA_ACCOUNT_PATH || `${home}/.local/state/aqua-voice/account.json`;
 const customizationsUrl = "https://core.aquavoice.com/users/transcript-customizations/";
+// Language enum recovered from Aqua macOS 0.19.8 settings schema.
+const supportedLanguageCodes = "auto ar be bn bg yue ca hr cs da nl en et fi fr gl de el he hi hu id ga it ja ko lv lt ms mt cmn mr mn no fa pl pt ro ru sl es sw sv ta th tr uk ur vi cy yi".split(" ");
+const languageNames = new Intl.DisplayNames(["en"], { type: "language" });
+const supportedLanguages = supportedLanguageCodes.map((value) => ({
+  value,
+  label: value === "auto" ? "Auto-detect" : value === "cmn" ? "Chinese (Mandarin)" : value === "yue" ? "Chinese (Cantonese)" : languageNames.of(value),
+}));
 let cachedToken = "";
 let cachedTokenAt = 0;
 const booleanSettings = new Set([
@@ -71,7 +78,9 @@ async function storeAquaToken(token) {
 }
 
 function clearAquaToken() {
-  Bun.spawnSync(["secret-tool", "clear", "service", "aqua-voice", "account", "default"]);
+  if (process.env.AQUA_VOICE_TOKEN?.trim()) throw new Error("Remove AQUA_VOICE_TOKEN from the backend environment to sign out");
+  const cleared = Bun.spawnSync(["secret-tool", "clear", "service", "aqua-voice", "account", "default"]);
+  if (!cleared.success) throw new Error("Could not remove the Aqua login from Secret Service. Unlock the keyring and try again.");
   const config = readAquaSettings();
   config.token = "";
   atomicWrite(settingsPath, config);
@@ -108,6 +117,7 @@ function publicSettings(config = readAquaSettings()) {
     : [];
   return {
     language: String(config.language || "en"),
+    supportedLanguages,
     savedLanguages: Array.isArray(config.savedLanguages)
       ? config.savedLanguages.filter((value) => typeof value === "string")
       : ["en"],
@@ -119,6 +129,9 @@ function publicSettings(config = readAquaSettings()) {
     casualMessaging: config.casualMessaging === true,
     dictionary,
     dictionaryCount: dictionary.length,
+    replacements: Array.isArray(config.replacements) ? config.replacements : [],
+    customInstructions: typeof config.customInstructions === "string" ? config.customInstructions : "",
+    customizationSyncedAt: config._aquaOmarchyCustomizationSyncedAt || "",
     replacementCount: Array.isArray(config.replacements) ? config.replacements.length : 0,
     customInstructionsConfigured: typeof config.customInstructions === "string"
       && config.customInstructions.trim().length > 0,
@@ -152,6 +165,7 @@ function persistTranscriptCustomizations(document) {
   config.replacements = document.replacements;
   config.customInstructions = document.customInstructions;
   if (Number.isFinite(document.revision)) config._aquaOmarchyCustomizationRevision = document.revision;
+  config._aquaOmarchyCustomizationSyncedAt = new Date().toISOString();
   atomicWrite(settingsPath, config);
   return config;
 }
@@ -162,6 +176,7 @@ async function requestTranscriptCustomizations(body) {
   if (!token) throw new Error("Aqua login token is missing");
   const response = await fetch(customizationsUrl, {
     method: body ? "POST" : "GET",
+    signal: AbortSignal.timeout(15000),
     headers: {
       Authorization: `Bearer ${token}`,
       ...(body ? { "Content-Type": "application/json" } : {}),
@@ -170,6 +185,10 @@ async function requestTranscriptCustomizations(body) {
   });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(payload.message || `Aqua dictionary request failed (${response.status})`);
+  const source = payload?.customizations || payload;
+  if (!Array.isArray(source.dictionary) || !Array.isArray(source.replacements) || typeof source.customInstructions !== "string") {
+    throw new Error("Aqua returned an incomplete personalization document; saved settings were kept");
+  }
   const document = normalizeTranscriptCustomizations(payload);
   persistTranscriptCustomizations(document);
   return document;
@@ -186,6 +205,30 @@ async function applyDictionaryOperation(type, input) {
   }
   if (type !== "dictionary_add" && type !== "dictionary_remove") throw new Error("invalid dictionary operation");
   return requestTranscriptCustomizations({ operation: { type, word } });
+}
+
+// Send exactly the narrow mutation shapes used by Aqua's settings sync queue.
+function customizationRequest(input) {
+  if (!input || typeof input !== "object") throw new Error("Invalid personalization action");
+  const nonempty = (value) => {
+    if (typeof value !== "string" || !value.trim()) throw new Error("Replacement text must not be empty");
+    return value.trim();
+  };
+  if (input.type === "custom_instructions") {
+    if (typeof input.text !== "string") throw new Error("Instructions must be text");
+    if (Buffer.byteLength(input.text, "utf8") > 100000) throw new Error("Instructions are too large");
+    return { customizations: { customInstructions: input.text } };
+  }
+  if (input.type === "replacement_remove") return { operation: { type: input.type, from: nonempty(input.from) } };
+  if (input.type !== "replacement_upsert") throw new Error("Unsupported personalization action");
+  const replacement = { from: nonempty(input.replacement?.from), to: nonempty(input.replacement?.to) };
+  for (const key of ["preserveCase", "neverAddPunctuation"]) {
+    if (input.replacement[key] !== undefined) {
+      if (typeof input.replacement[key] !== "boolean") throw new Error(`${key} must be true or false`);
+      replacement[key] = input.replacement[key];
+    }
+  }
+  return { operation: { type: input.type, replacement, ...(input.oldFrom ? { oldFrom: nonempty(input.oldFrom) } : {}) } };
 }
 
 function atomicWrite(path, value) {
@@ -207,12 +250,8 @@ function setSetting(key, value) {
     if (key === "privacyMode" && config[key]) config.memory = false;
     if (key === "memory" && config[key]) config.privacyMode = false;
   } else if (key === "language") {
-    if (!/^[A-Za-z][A-Za-z0-9-]{1,15}$/.test(value) && value !== "auto") {
-      throw new Error("invalid language code");
-    }
-    if (Array.isArray(config.savedLanguages) && !config.savedLanguages.includes(value)) {
-      throw new Error("language is not in Aqua's saved languages");
-    }
+    if (!supportedLanguageCodes.includes(value)) throw new Error("unsupported Aqua language");
+    config.savedLanguages = [...new Set([...(Array.isArray(config.savedLanguages) ? config.savedLanguages : []), value])];
     config.language = value;
   } else {
     throw new Error(`setting is not supported by the direct client: ${key}`);
@@ -258,6 +297,8 @@ function output(value, ok = true) {
 }
 
 export {
+  requestTranscriptCustomizations,
+  customizationRequest,
   appendHistoryEntry,
   applyDictionaryOperation,
   clearAccountMetadata,
