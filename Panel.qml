@@ -31,6 +31,7 @@ Panel {
   implicitHeight: barRow.implicitHeight
 
   readonly property string statusTitle: {
+    if (svc && svc.setupRequired) return "Set up Aqua Voice"
     if (!online) return "Backend stopped"
     if (phase === "armed") return "Tap again"
     if (recording) return "Listening"
@@ -41,6 +42,7 @@ Panel {
     return "Ready"
   }
   readonly property string statusDetail: {
+    if (svc && svc.setupRequired) return "Install the backend and login handler for your user account."
     if (!online) return "Start Aqua to enable realtime dictation"
     if (phase === "armed") return "Second tap starts hands-free dictation"
     if (recording) return svc && svc.liveText ? svc.liveText : "Tap once when you are done"
@@ -62,15 +64,19 @@ Panel {
   }
   function run(args, input) {
     if (action.running) return
+    if (svc && svc.setupRequired && args[0] !== "setup") { page = "dictate"; return }
     actionMessage = ""
     actionOwner = currentPage
     if ((args[0] === "trigger" && (args[1] === "paste-last" || args[1] === "start")) || args[0] === "paste-history") root.close()
     actionInput = typeof input === "string" ? input : ""
     action.stdinEnabled = actionInput !== ""
-    action.command = [control].concat(args)
+    if (args[0] === "setup" || (args[0] === "start" && svc && svc.setupRequired)) {
+      action.command = ["bash", Qt.resolvedUrl("install.sh").toString().replace(/^file:\/\//, ""), "--accept-setup"].concat(args.slice(1))
+    } else action.command = [control].concat(args)
     action.running = true
   }
   function primaryAction() {
+    if (svc && svc.setupRequired) { page = "dictate"; return }
     if (!online) run(["start"])
     else if (recording) run(["trigger", "stop"])
     else if (!processing) run(["trigger", "start"])
@@ -105,7 +111,7 @@ Panel {
       var payload = null
       try { payload = JSON.parse(exitCode === 0 ? action.stdout.text : action.stderr.text) } catch (_) {}
       root.actionFailed = exitCode !== 0 || Boolean(payload && payload.ok === false)
-      root.actionMessage = root.actionFailed ? (payload && payload.error ? String(payload.error) : "Action failed. Please try again.") : "Done"
+      root.actionMessage = root.actionFailed ? (payload && payload.error ? String(payload.error) : (action.stderr.text.trim() || "Action failed. Please try again.")) : "Done"
       if (root.actionOwner && typeof root.actionOwner.actionFinished === "function") root.actionOwner.actionFinished(!root.actionFailed)
       stdinEnabled = false
       root.actionInput = ""

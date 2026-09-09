@@ -7,6 +7,21 @@ AUTH="${AQUA_AUTH_BIN:-$HOME/.local/lib/aqua-voice/aqua-auth.js}"
 HOTKEY="${AQUA_HOTKEY_BIN:-$HOME/.local/lib/aqua-voice/aqua-hotkey.js}"
 
 RUNTIME="${AQUA_RUNTIME_BIN:-$HOME/.local/lib/aqua-voice/runtime}"
+# A newly added plugin must be able to describe setup without Bun or jq.
+if [[ "${1:-status}" == "status" ]]; then
+  for required in "$BRIDGE" "$SETTINGS" "$AUTH" "$HOTKEY" "$RUNTIME" "$HOME/.local/lib/aqua-voice/.setup-complete"; do
+    if [[ ! -f "$required" ]]; then
+      conflict=false
+      if command -v xdg-mime >/dev/null; then
+        handler=$(xdg-mime query default x-scheme-handler/aquavoice 2>/dev/null || true)
+        if [[ -n "$handler" && "$handler" != aqua-voice-callback.desktop ]]; then conflict=true; fi
+      fi
+      printf '{"ok":true,"phase":"offline","setupRequired":true,"loginHandlerConflict":%s,"recording":false,"processing":false,"error":"Set up Aqua Voice to install its backend."}\n' "$conflict"
+      exit 0
+    fi
+  done
+fi
+
 run_js() {
   if [[ -x "$RUNTIME" ]]; then "$RUNTIME" "$@"
   else bun "$@"
@@ -23,6 +38,7 @@ offline_status() {
 }
 
 case "${1:-status}" in
+  restore-login-handler) bash "$HOME/.local/lib/aqua-voice/aqua-login-handler" restore ;;
   start) systemctl --user start aqua-voice.service ;;
   stop) systemctl --user stop aqua-voice.service ;;
   restart) systemctl --user restart aqua-voice.service ;;

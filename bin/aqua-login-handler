@@ -1,0 +1,32 @@
+#!/bin/bash
+set -euo pipefail
+own=aqua-voice-callback.desktop
+scheme=x-scheme-handler/aquavoice
+saved="$HOME/.local/state/aqua-voice/previous-login-handler"
+current=$(xdg-mime query default "$scheme")
+case "${1:-claim}" in
+  claim)
+    if [[ -n "$current" && "$current" != "$own" ]]; then
+      if [[ "${2:-}" != "--replace" ]]; then
+        echo "Existing Aqua login handler preserved. Browser sign-in remains assigned to that application."
+        exit 0
+      fi
+      mkdir -p "$(dirname "$saved")"
+      if [[ ! -e "$saved" ]]; then
+        (umask 077; set -o noclobber; printf '%s\n' "$current" > "$saved")
+      fi
+    fi
+    xdg-mime default "$own" "$scheme"
+    ;;
+  restore)
+    if [[ "$current" == "$own" && -s "$saved" ]]; then
+      IFS= read -r previous < "$saved"
+      xdg-mime default "$previous" "$scheme"
+      rm -- "$saved"
+      echo "Previous Aqua login handler restored."
+    else
+      echo "No handler change needed; current selection preserved."
+    fi
+    ;;
+  *) echo "usage: aqua-login-handler claim [--replace] | restore" >&2; exit 2 ;;
+esac

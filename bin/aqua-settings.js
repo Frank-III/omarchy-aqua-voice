@@ -2,6 +2,7 @@
 
 import {
   chmodSync,
+  existsSync,
   mkdirSync,
   readFileSync,
   renameSync,
@@ -12,7 +13,7 @@ import { dirname } from "node:path";
 import { randomUUID } from "node:crypto";
 
 const home = process.env.HOME;
-const settingsPath = process.env.AQUA_SETTINGS_PATH || `${home}/.config/Aqua Voice/settings.json`;
+const settingsPath = process.env.AQUA_SETTINGS_PATH || `${home}/.config/aqua-voice/settings.json`;
 const historyPath = process.env.AQUA_HISTORY_PATH || `${home}/.local/state/aqua-voice/history.json`;
 const accountPath = process.env.AQUA_ACCOUNT_PATH || `${home}/.local/state/aqua-voice/account.json`;
 const customizationsUrl = "https://core.aquavoice.com/users/transcript-customizations/";
@@ -42,6 +43,20 @@ function readJson(path, fallback) {
 
 function readAquaSettings() {
   return readJson(settingsPath, {});
+}
+
+function readExistingSettings() {
+  const legacyPath = process.env.AQUA_LEGACY_SETTINGS_PATH || `${home}/.config/Aqua Voice/settings.json`;
+  const config = JSON.parse(readFileSync(legacyPath, "utf8"));
+  if (!config || typeof config !== "object" || Array.isArray(config)) throw new Error("Existing Aqua settings are invalid");
+  return config;
+}
+
+function importExistingSettings(config) {
+  if (existsSync(settingsPath)) throw new Error("This client's settings already exist; import will not overwrite them");
+  const { token, ...preferences } = config;
+  mkdirSync(dirname(settingsPath), { recursive: true, mode: 0o700 });
+  writeFileSync(settingsPath, `${JSON.stringify(preferences, null, 2)}\n`, { mode: 0o600, flag: "wx" });
 }
 
 function readKeyringToken() {
@@ -316,6 +331,8 @@ function output(value, ok = true) {
 }
 
 export {
+  readExistingSettings,
+  importExistingSettings,
   probeTranscriptCustomizations,
   requestTranscriptCustomizations,
   customizationRequest,

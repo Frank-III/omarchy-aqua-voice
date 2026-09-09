@@ -1,6 +1,8 @@
 #!/usr/bin/env bun
 
 import {
+  readExistingSettings,
+  importExistingSettings,
   clearAccountMetadata,
   clearAquaToken,
   readAccountMetadata,
@@ -85,6 +87,15 @@ if (import.meta.main) {
   try {
     const command = process.argv[2] || "status";
     if (command === "status") console.log(JSON.stringify(safeStatus()));
+    else if (command === "import-existing") {
+      const existing = readExistingSettings();
+      const token = readKeyringToken() || String(existing.token || "").trim();
+      const account = token ? await validateToken(token) : null;
+      importExistingSettings(existing);
+      if (token) await storeAquaToken(token);
+      if (account) writeAccountMetadata(account);
+      console.log(JSON.stringify({ok:true,imported:true}));
+    }
     else if (command === "refresh") {
       const token = readAquaToken(readAquaSettings(), true);
       if (!token) throw new Error("Sign in to refresh your account");

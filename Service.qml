@@ -17,6 +17,8 @@ Item {
 
   property int revision: 0
   property string phase: "offline"
+  property bool setupRequired: false
+  property bool loginHandlerConflict: false
   property string stage: ""
   property string completion: ""
   property bool recording: false
@@ -61,6 +63,8 @@ Item {
   function applyState(text) {
     try {
       var state = JSON.parse(String(text || "{}"))
+      setupRequired = state.setupRequired === true
+      loginHandlerConflict = state.loginHandlerConflict === true
       backendVersion = String(state.version || "")
       websocketConnected = state.connected === true
       phase = String(state.phase || "offline")

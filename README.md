@@ -1,120 +1,86 @@
 # Aqua Voice for Omarchy
 
-**Unofficial community project.** This is not the official Aqua Voice Linux app. The Aqua Voice team is working on an official Linux client, according to feedback shared by the team.
+Voice dictation with a native Omarchy panel, a floating recording overlay, and automatic paste.
 
-An Omarchy-native Aqua Voice client. It uses a plain JavaScript/Bun backend for Aqua's realtime WebSocket protocol, physical input, Wayland paste, and state IPC. No Electron process runs; the QML plugin owns the visible tray, panel, and HUD.
+**Unofficial community project. The Aqua Voice team is working on an official Linux client.** Requires an Aqua Voice account.
 
-The bar widget uses Aqua Voice's official orb asset from `https://aquavoice.com/images/icons/orb-128.png`.
+<img src="preview.png" alt="Aqua Voice settings panel" width="640">
 
-## Screenshots
+<details>
+<summary>Recording overlay</summary>
 
-Settings and shortcut controls:
+![Recording overlay](assets/recording-overlay.png)
 
-![Aqua Voice settings panel](preview.png)
-
-The compact recording overlay stays visible without taking focus:
-
-![Aqua Voice recording overlay on the Omarchy desktop](assets/recording-overlay.png)
-
-## Interaction
-
-- Choose a shortcut in **Settings → Record hotkey**. Double-tap it to start hands-free recording, then tap once to finish and paste. The legacy fallback is `Super+Shift+F23`; most keyboards need a recorded shortcut.
-- A single early tap only arms the gesture; it does not open the microphone or WebSocket.
-- A slow second tap re-arms instead of recording, key repeats are ignored, and Escape or input-device loss cancels without paste.
-- Open the Omarchy bar panel to see Idle, Recording, Processing, or Error state.
-- A bottom-center, click-through HUD stays visible for Recording and Transcribing without taking focus. Its animated bars and pulsing orb are recording indicators, not microphone level meters.
-- The panel can start, finish, or cancel a dictation and shows the latest completed transcript.
-- Right-click the bar icon to paste the last completed dictation.
-- System controls in the panel show the microphone, account, physical hotkey, protocol, and backend state and can start or stop the backend.
-- The panel reports audio length and post-release latency for the latest result.
-- The tray panel follows Mihomo's fixed two-column Omarchy layout with Dictate, History, Dictionary, Account, Settings, and System pages.
-- History keeps at most 20 completed dictations in `~/.local/state/aqua-voice/history.json` (mode `0600`); each entry can be copied or pasted into the currently focused window, Privacy Mode prevents new entries, and the page can clear all entries.
-- The Settings page offers a searchable picker for the languages in Aqua's recovered schema and controls Privacy Mode, Continual Learning, transcript refinement, and Casual Messaging without launching Electron.
-- The backend fetches personalization once on startup. While Dictionary is open, the panel checks its revision with HEAD every seven seconds and fetches the document only when the revision increases. Dictation uses the server's settings.
-- The Dictionary page manages account-synced words, replacements (including case and punctuation options), and writing instructions. Saves use the customization operations recovered from Aqua macOS 0.19.8; failures remain visible and retain your draft.
-- Account opens Aqua's official browser sign-in, receives its `aquavoice://token=…` callback, validates the account, and stores the token in Secret Service instead of plaintext settings.
-- Captures shorter than 100 ms are discarded as accidental taps.
-- Finalization waits 15 seconds plus one second per minute of audio. On timeout, the socket closes with code 4003 and the client polls recovery for the original session; audio is never replayed into a new WebSocket session. Retained audio is uploaded through HTTP only if `stop_request` was not sent. Recovery is bounded and canceled when you cancel dictation.
-- Final annotated text preserves whitespace and excludes deleted segments. Empty final results finish immediately with “No text returned”.
-- Each completed WebSocket session reports delivered text with `stop.content`, then waits for the server to close (with a five-second cleanup timeout). Delivery includes typing/paste, clipboard, or the final text shown in the panel. Only an empty result reports empty content; cancellation reports `canceled: true`. Once final delivery begins, duplicate finals and disconnects cannot trigger another automatic insertion.
-- Stopping capture waits for both recorder exit and the audio-reader drain before flushing the final partial chunk and sending `stop_request`.
-- Paste waits for the configured shortcut's physical release events before injecting `Ctrl+V` or Omarchy's tagged-terminal `Shift+Insert`, preventing the stop chord from leaking into SSH/TUI applications.
-- The release guard includes physical Alt for keymaps using `altwin:swap_alt_win`; standard Alt/Super layouts are supported too.
-- Settings can record a new global shortcut with a one-shot C helper. The helper exits after one chord, JavaScript applies XKB remaps, and the generated Hyprland binding swallows the chord before the backend handles double-tap/start/stop.
-- Transcript clipboard operations use native Wayland `wl-copy`. They do not use HEX/GPUI's X11 image-clipboard fallback, so an unreachable X11 server cannot block text history copy or paste.
-- Paste never changes compositor focus. It snapshots the focused Hyprland client before clipboard setup and injects only if that same client is still focused; otherwise the transcript remains copied without a synthetic keypress.
-
-The interaction model follows the useful parts of [HEX](https://github.com/anomalyco/hex): explicit recording/processing feedback, short-tap rejection, cancellation that never pastes, and direct read-only evdev hotkey monitoring independent of the settings frontend. This grants the backend visibility into all physical keyboard events; it does not retain ordinary key state and reacts to the configured shortcut plus Escape. Aqua remains the transcription provider, using a Secret Service login token, with migration support for legacy `~/.config/Aqua Voice/settings.json` tokens.
+</details>
 
 ## Install
 
-Requires Omarchy's plugin-capable shell and Lua Hyprland configuration (`~/.config/hypr/bindings.lua`), PipeWire, a working Secret Service keyring, and an Aqua Voice account. This is an unofficial client using a reverse-engineered service protocol; upstream changes can require an update.
+Requires Omarchy with Lua Hyprland bindings, PipeWire, and a working Secret Service keyring.
 
-Install Bun with `mise use -g bun`, and ensure these Arch packages are available: `base-devel`, `jq`, `wl-clipboard`, `wtype`, `pipewire-audio`, `libsecret`, and `xdg-utils`. The installer checks the commands it needs before modifying files. The Bun runtime path is pinned at installation; rerun the installer if that Bun version is removed.
+Install Bun with `mise use -g bun`. Required Arch packages: `base-devel`, `jq`, `wl-clipboard`, `wtype`, `pipewire-audio`, `libsecret`, and `xdg-utils`.
+
+Copy the command below and paste it into your terminal. Once listed on the [Omarchy marketplace](https://plugins.omarchy.org/), you can also use **Copy install command** on the Aqua Voice card.
 
 ```bash
 omarchy plugin add https://github.com/Frank-III/omarchy-aqua-voice --enable
-cd ~/.config/omarchy/plugins/frankmi.aqua-voice
-./install.sh
 ```
 
-Adding the plugin installs its panel; the separate installer sets up its backend, login callback, and App Finder entry. Open **Aqua Voice → Account** to sign in, then **Settings → Record hotkey**. Existing shortcuts and settings are preserved by installation. Start/finish buttons also work without a global shortcut.
+Click the Aqua bar icon, review the setup summary, then **Install and enable**. If another app handles Aqua login links, an unchecked option lets you switch them to this client. Missing dependencies appear in the panel.
 
-### Keyboard access
+Terminal alternative: `bash ~/.config/omarchy/plugins/frankmi.aqua-voice/install.sh`.
 
-Global shortcuts and shortcut recording need read access to `/dev/input/event*` keyboard devices. If unavailable, the panel remains usable and System shows the shortcut as unavailable. Grant access according to your system policy. Membership in the `input` group is one option, but it grants access to other keyboard input too; it is not added automatically. After changing group membership, log out and back in.
+## Use
 
-### Updates and removal
+1. Open **Aqua Voice** from App Finder or the bar.
+2. Sign in under **Account**.
+3. Choose a shortcut under **Settings → Record hotkey**.
+4. Double-tap to record; tap once to finish and paste. **Escape** cancels.
 
-After `omarchy plugin update frankmi.aqua-voice`, rerun the installed plugin's `./install.sh`, then `systemctl --user restart aqua-voice.service` while not dictating. Updating only the plugin does not update the backend copy.
+The panel also has start/finish buttons. **Dictionary** manages words, replacements, and writing instructions; **History** keeps your last 20 dictations.
 
-To remove the plugin, stop and disable `aqua-voice.service`, then use `omarchy plugin remove frankmi.aqua-voice`. Backend files remain in `~/.local/lib/aqua-voice`, the control script in `~/.local/bin`, and desktop entries in `~/.local/share/applications`. Local history, settings, and credentials remain until explicitly removed; use Account → Sign out first if you want to remove the saved keyring credential.
+Global shortcuts require read access to keyboard devices in `/dev/input/`. The `input` group can provide this, but grants access to other keyboard events too. Access is never granted automatically; panel buttons work without it.
 
-## Runtime
+Preferences live in `~/.config/aqua-voice/settings.json`; previous `~/.config/Aqua Voice/settings.json` files are never changed by the default client.
+
+Audio goes to Aqua for transcription and is not saved locally. Login uses the keyring. **Privacy Mode** stops new local history entries.
+
+## Update
+
+Run while not dictating:
+
+```bash
+omarchy plugin update frankmi.aqua-voice
+cd ~/.config/omarchy/plugins/frankmi.aqua-voice
+./install.sh
+systemctl --user restart aqua-voice.service
+```
+
+Rerun the installer if you remove the Bun version used at installation.
+
+## Remove
+
+Sign out in **Account** first to remove your saved login, then:
+
+```bash
+systemctl --user disable --now aqua-voice.service
+omarchy plugin remove frankmi.aqua-voice
+```
+
+To restore a replaced login handler, run `aqua-voice-control restore-login-handler` before removal. It preserves any newer handler choice you made.
+
+This leaves local settings/history, backend files in `~/.local/lib/aqua-voice`, the control script, and desktop entries in place.
+
+## Troubleshooting & development
 
 ```bash
 aqua-voice-control status
-aqua-voice-control trigger start
-aqua-voice-control trigger stop
-aqua-voice-control trigger cancel
-aqua-voice-control auth status
-aqua-voice-control auth login
-aqua-voice-control hotkey status
-aqua-voice-control record-hotkey
-journalctl --user -u aqua-voice.service -f
-```
-
-The backend is `aqua-voice.service`. Audio exists only while a capture or bounded recovery is active and is cleared after completion, failure, or cancellation. Completed text may be kept in the bounded local history unless Privacy Mode is enabled; no audio is written to disk.
-
-The installer enables and starts the user service under `graphical-session.target`. It therefore starts automatically after every reboot when the Omarchy graphical session begins, once Hyprland, PipeWire, and the Wayland session are available.
-
-The installer also registers a visible XDG application named **Aqua Voice**. Searching Aqua, voice, dictation, transcription, speech, or microphone in Omarchy's app finder opens the existing QML control center; it does not start Electron or create another backend process.
-
-## Development
-
-```bash
+journalctl --user -u aqua-voice.service -n 50 --no-pager
 bun test
 omarchy plugin validate .
 ```
 
-After pulling or committing an update, deploy and verify the local backend and Omarchy plugin with:
+[Implementation notes](AQUA_UI.md) · [Release checks and known limits](RELEASE_CHECKLIST.md) · [MIT license](LICENSE)
 
-```bash
-./update.sh
-```
+Thanks to the [Aqua Voice team](https://aquavoice.com) for building Aqua Voice and providing protocol guidance and feedback that helped improve this community client.
 
-The updater refuses dirty source or destination checkouts, runs tests and validation, fast-forwards a separate installed checkout without changing its origin, installs the backend, and restarts the service and shell. It also works directly from the installed plugin checkout. Run it while not dictating.
-
-To audit a newly extracted Aqua desktop release before using it as a protocol reference:
-
-```bash
-bun scripts/check-aqua-compat.js ~/aqua-voice-linux/app
-```
-
-The checker fails if Aqua changes any realtime, finalization, dictionary, profile, sign-in, or callback anchor used by this plugin.
-
-## Hotkey capture
-
-Choose **Settings → Record hotkey**, then press one chord. Escape cancels and a 15-second timeout leaves the existing shortcut untouched. The 17 KB C helper runs only during capture and emits one JSON chord; it never remains resident or records ordinary typing. JavaScript translates XKB remaps, backs up `~/.config/hypr/bindings.lua` once, updates the managed Aqua binding, validates `hyprctl configerrors`, rolls back on failure, and restarts the backend with the new matcher.
-
-This is an unofficial interoperability project and is not affiliated with Aqua Voice.
+Aqua Voice branding belongs to Aqua Voice; the orb comes from [their website](https://aquavoice.com/images/icons/orb-128.png).

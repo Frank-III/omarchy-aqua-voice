@@ -33,6 +33,9 @@ test("clean staged installation works without Bun on the desktop PATH", () => {
     expect(existsSync(join(home, ".local/lib/aqua-voice/aqua-hotkey-capture"))).toBe(true);
     expect(readFileSync(join(home, ".config/systemd/user/aqua-voice.service"), "utf8")).toContain("aqua-voice/runtime");
     expect(existsSync(join(home, ".config/hypr/bindings.lua"))).toBe(false);
+    const incomplete = Bun.spawnSync([control, "status"], {env:desktopEnv});
+    expect(JSON.parse(incomplete.stdout.toString()).setupRequired).toBe(true);
+
   } finally { rmSync(home, { recursive: true, force: true }); }
 });
 
@@ -72,4 +75,17 @@ test("updater preserves origin from both a source checkout and installed checkou
     command(["bash", join(plugin, "update.sh")], env);
     expect(command(["git", "-C", plugin, "remote", "get-url", "origin"])).toBe(original);
   } finally { rmSync(home, { recursive: true, force: true }); }
+});
+
+
+test("fresh plugin status explains setup without Bun or jq", () => {
+  const home = mkdtempSync(join(tmpdir(), "aqua-first-run-"));
+  try {
+    const result = Bun.spawnSync(["/bin/bash", resolve("bin/aqua-voice-control"), "status"], {
+      env: { HOME: home, PATH: "/nonexistent" },
+    });
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr.toString()).toBe("");
+    expect(JSON.parse(result.stdout.toString())).toMatchObject({setupRequired:true,phase:"offline",ok:true});
+  } finally { rmSync(home, {recursive:true,force:true}); }
 });

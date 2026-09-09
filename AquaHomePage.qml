@@ -28,8 +28,8 @@ Item {
     anchors.left: parent.left
     anchors.right: parent.right
     anchors.top: parent.top
-    title: "Dictate"
-    subtitle: online ? "Speak naturally. Aqua writes it for you." : "Backend stopped · settings remain available"
+    title: root.svc && root.svc.setupRequired ? "Welcome to Aqua Voice" : "Dictate"
+    subtitle: root.svc && root.svc.setupRequired ? "One-time setup · no administrator access needed" : online ? "Speak naturally. Aqua writes it for you." : "Backend stopped · settings remain available"
     foreground: root.foreground
     fontFamily: root.fontFamily
   }
@@ -101,15 +101,39 @@ Item {
             }
           }
         }
+        Text {
+          visible: root.svc && root.svc.setupRequired
+          width: parent.width
+          text: "Installs the backend for your account and enables it at login. Registers Aqua login links if no other app handles them. Your shortcuts and existing settings stay unchanged."
+          color: root.foreground
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.bodySmall
+          wrapMode: Text.Wrap
+        }
+        Toggle {
+          id: replaceHandler
+          visible: root.svc && root.svc.setupRequired && root.svc.loginHandlerConflict
+          width: parent.width
+          label: "Use this client for Aqua login links"
+          description: "Replaces the existing handler and saves it for restoration. Needed for browser sign-in here; leave off to keep login links in the other app."
+          foreground: root.foreground
+          fontFamily: root.fontFamily
+          checked: false
+          onClicked: checked = !checked
+        }
         Row {
           width: parent.width
           spacing: Style.space(8)
           Button {
             width: root.recording || root.processing ? (parent.width - parent.spacing) * 0.68 : parent.width
-            text: !root.online ? "Start backend" : (root.recording ? "Finish dictation" : "Start dictation")
+            text: root.svc && root.svc.setupRequired ? "Install and enable" : !root.online ? "Start backend" : (root.recording ? "Finish dictation" : "Start dictation")
             enabled: !root.processing && (!root.online || root.recording || (root.svc && root.svc.tokenPresent))
             onClicked: {
-              if (!root.online) root.actionRequested(["start"])
+              if (root.svc && root.svc.setupRequired) {
+                var args = ["setup"]
+                if (replaceHandler.visible && replaceHandler.checked) args.push("--replace-login-handler")
+                root.actionRequested(args)
+              } else if (!root.online) root.actionRequested(["start"])
               else root.actionRequested(["trigger", root.recording ? "stop" : "start"])
             }
           }
@@ -146,6 +170,7 @@ Item {
 
       AquaCard {
         width: parent.width
+        visible: !root.svc || !root.svc.setupRequired
         foreground: root.foreground
         PanelSectionHeader { text: "Workflow"; foreground: root.foreground; fontFamily: root.fontFamily }
         AquaInfoRow { width: parent.width; label: "Activation"; value: "Double-tap " + (root.svc ? root.svc.hotkeyDisplay : "Shift+Super+F23"); foreground: root.foreground; fontFamily: root.fontFamily }
