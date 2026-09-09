@@ -156,7 +156,7 @@ Item {
 
       Text {
         width: parent.width
-        text: "Audio is sent to Aqua for transcription and is not saved on this device."
+        text: "Unofficial community client. The Aqua Voice team is working on an official Linux client. Audio is sent to Aqua for transcription."
         color: Util.alpha(root.foreground, 0.42)
         font.family: root.fontFamily
         font.pixelSize: Style.font.caption

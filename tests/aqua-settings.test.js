@@ -6,7 +6,7 @@ import { join, resolve } from "node:path";
 test("personalization writes require a valid server response; failures preserve local settings", () => {
   const directory = mkdtempSync(join(tmpdir(), "aqua-settings-test-"));
   const script = `
-    import { requestTranscriptCustomizations, customizationRequest, readAquaSettings, setSetting } from ${JSON.stringify(resolve("bin/aqua-settings.js"))};
+    import { probeTranscriptCustomizations, requestTranscriptCustomizations, customizationRequest, readAquaSettings, setSetting } from ${JSON.stringify(resolve("bin/aqua-settings.js"))};
     import { expect } from "bun:test";
     await Bun.write(process.env.AQUA_SETTINGS_PATH, JSON.stringify({language:"en",savedLanguages:["en"],dictionary:["original"],replacements:[],customInstructions:"keep"}));
     setSetting("language", "ja");
@@ -29,6 +29,23 @@ test("personalization writes require a valid server response; failures preserve 
       await expect(requestTranscriptCustomizations(body)).rejects.toThrow();
       expect(readAquaSettings()).toEqual(saved);
     }
+    const requests = [];
+    let remoteRevision = "1";
+    globalThis.fetch = async (url, options) => {
+      requests.push(options.method);
+      if (options.method === "HEAD") return new Response(null, {headers:{"X-Transcript-Customizations-Revision":remoteRevision}});
+      return Response.json({revision:2,customizations:{dictionary:["new"],replacements:[],customInstructions:"keep"}});
+    };
+    expect(await probeTranscriptCustomizations()).toBe(false);
+    expect(requests).toEqual(["HEAD"]);
+    remoteRevision = "2";
+    expect(await probeTranscriptCustomizations()).toBe(true);
+    expect(requests).toEqual(["HEAD", "HEAD", "GET"]);
+    expect(readAquaSettings().dictionary).toEqual(["new"]);
+    remoteRevision = "invalid";
+    expect(await probeTranscriptCustomizations()).toBe(false);
+    expect(requests.at(-1)).toBe("HEAD");
+
   `;
   try {
     const result = Bun.spawnSync([process.execPath, "--eval", script], {

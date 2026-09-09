@@ -1,5 +1,7 @@
 # Aqua Voice for Omarchy
 
+**Unofficial community project.** This is not the official Aqua Voice Linux app. The Aqua Voice team is working on an official Linux client, according to feedback shared by the team.
+
 An Omarchy-native Aqua Voice client. It uses a plain JavaScript/Bun backend for Aqua's realtime WebSocket protocol, physical input, Wayland paste, and state IPC. No Electron process runs; the QML plugin owns the visible tray, panel, and HUD.
 
 The bar widget uses Aqua Voice's official orb asset from `https://aquavoice.com/images/icons/orb-128.png`.
@@ -28,12 +30,13 @@ The compact recording overlay stays visible without taking focus:
 - The tray panel follows Mihomo's fixed two-column Omarchy layout with Dictate, History, Dictionary, Account, Settings, and System pages.
 - History keeps at most 20 completed dictations in `~/.local/state/aqua-voice/history.json` (mode `0600`); each entry can be copied or pasted into the currently focused window, Privacy Mode prevents new entries, and the page can clear all entries.
 - The Settings page offers a searchable picker for the languages in Aqua's recovered schema and controls Privacy Mode, Continual Learning, transcript refinement, and Casual Messaging without launching Electron.
+- The backend fetches personalization once on startup. While Dictionary is open, the panel checks its revision with HEAD every seven seconds and fetches the document only when the revision increases. Dictation uses the server's settings.
 - The Dictionary page manages account-synced words, replacements (including case and punctuation options), and writing instructions. Saves use the customization operations recovered from Aqua macOS 0.19.8; failures remain visible and retain your draft.
 - Account opens Aqua's official browser sign-in, receives its `aquavoice://token=…` callback, validates the account, and stores the token in Secret Service instead of plaintext settings.
 - Captures shorter than 100 ms are discarded as accidental taps.
-- Fast finalizations that disconnect before returning text are retried once from an in-memory PCM buffer; the buffer is cleared after completion or failure.
+- Finalization waits 15 seconds plus one second per minute of audio. On timeout, the socket closes with code 4003 and the client polls recovery for the original session; audio is never replayed into a new WebSocket session. Retained audio is uploaded through HTTP only if `stop_request` was not sent. Recovery is bounded and canceled when you cancel dictation.
 - Final annotated text preserves whitespace and excludes deleted segments. Empty final results finish immediately with “No text returned”.
-- Each completed WebSocket session reports delivered text with `stop.content`, then waits for the server to close (with a five-second cleanup timeout). Copy-only or failed paste reports empty content; cancellation reports `canceled: true`. Once final delivery begins, duplicate finals and disconnects cannot trigger another automatic insertion.
+- Each completed WebSocket session reports delivered text with `stop.content`, then waits for the server to close (with a five-second cleanup timeout). Delivery includes typing/paste, clipboard, or the final text shown in the panel. Only an empty result reports empty content; cancellation reports `canceled: true`. Once final delivery begins, duplicate finals and disconnects cannot trigger another automatic insertion.
 - Stopping capture waits for both recorder exit and the audio-reader drain before flushing the final partial chunk and sending `stop_request`.
 - Paste waits for the configured shortcut's physical release events before injecting `Ctrl+V` or Omarchy's tagged-terminal `Shift+Insert`, preventing the stop chord from leaking into SSH/TUI applications.
 - The release guard includes physical Alt for keymaps using `altwin:swap_alt_win`; standard Alt/Super layouts are supported too.
@@ -81,7 +84,7 @@ aqua-voice-control record-hotkey
 journalctl --user -u aqua-voice.service -f
 ```
 
-The backend is `aqua-voice.service`. Audio exists only while a capture or one automatic finalization retry is active and is cleared after completion, failure, or cancellation. Completed text may be kept in the bounded local history unless Privacy Mode is enabled; no audio is written to disk.
+The backend is `aqua-voice.service`. Audio exists only while a capture or bounded recovery is active and is cleared after completion, failure, or cancellation. Completed text may be kept in the bounded local history unless Privacy Mode is enabled; no audio is written to disk.
 
 The installer enables and starts the user service under `graphical-session.target`. It therefore starts automatically after every reboot when the Omarchy graphical session begins, once Hyprland, PipeWire, and the Wayland session are available.
 

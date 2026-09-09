@@ -11,9 +11,10 @@ import {
   readHistory,
   refreshTranscriptCustomizations,
 } from "./aqua-settings.js";
+import { finalizationTimeout, recoverRecording, reportRecoveryOutcome } from "./aqua-recovery.js";
 import { hotkeyMatches, readHotkeyConfig, readKbOptions } from "./aqua-hotkey.js";
 
-const VERSION = "1.0.1";
+const VERSION = "1.0.2";
 const DOUBLE_TAP_MS = 650;
 const PHYSICAL_DEBOUNCE_MS = 80;
 const MIN_CAPTURE_MS = 100;
@@ -72,6 +73,7 @@ let sessionAudioBytes = 0;
 let sessionConfig = null;
 let sessionTarget = null;
 let retryCount = 0;
+let sessionContext = null;
 const heldHotkeyCodes = new Set();
 let hotkeyConfig = readHotkeyConfig();
 let kbOptions = readKbOptions();
@@ -91,9 +93,6 @@ function clearSessionAudio() {
   sessionAudioBytes = 0;
 }
 
-function shouldRetryFinalization(phase, attempts, audioBytes) {
-  return phase === "processing" && attempts < 1 && audioBytes >= 3200;
-}
 
 function settings() {
   return readAquaSettings();
@@ -220,7 +219,12 @@ async function paste(text, isActive = () => true) {
     trace("paste-skipped", { reason: "focus-changed", targetClass: target?.class || "", currentClass: current?.class || "" });
     return "Copied";
   }
-  const chord = await sendPasteShortcut(current.class, current.terminal);
+  let chord;
+  try { chord = await sendPasteShortcut(current.class, current.terminal); }
+  catch (error) {
+    trace("paste-shortcut-failed", { message: error.message, fallback: "clipboard" });
+    return "Copied";
+  }
   trace("paste", { targetClass: current.class, terminal: current.terminal, chord });
   return "Pasted";
 }
@@ -319,7 +323,7 @@ function createDelivery(socket, report = finishSocket) {
       } finally {
         if (!canceled) report(socket, {
           type: "stop",
-          content: outcome === "Pasted" ? text : "",
+          content: text,
           canceled: false,
           mode: "hands_free",
         });
@@ -336,8 +340,17 @@ async function complete(text) {
   state.lastLatencyMs = state.processingStarted ? Date.now() - state.processingStarted : 0;
   state.processingStarted = 0;
   trace("transcript-final", { audioMs: state.lastAudioMs, latencyMs: state.lastLatencyMs, targetClass: state.targetClass });
+  // The panel is also a delivery route, including when clipboard setup fails.
+  state.liveText = text;
+  if (text) state.latestTranscript = text;
   try {
-    const outcome = await currentDelivery.run(text, paste);
+    const outcome = await currentDelivery.run(text, async (value, active) => {
+      try { return await paste(value, active); }
+      catch (error) {
+        trace("clipboard-failed", { message: error.message, fallback: "panel" });
+        return "Text ready in Aqua";
+      }
+    });
     if (delivery !== currentDelivery || outcome === null) return;
     state.liveText = text;
     if (text) {
@@ -368,61 +381,62 @@ async function complete(text) {
   }
 }
 
-function handleServerMessage(event, replay) {
+function handleServerMessage(event) {
   if (typeof event.data !== "string") return;
   let message;
   try { message = JSON.parse(event.data); } catch { return; }
   if (message.type === "ready") {
     websocketReady = true;
-    if (replay) {
-      const audio = Buffer.concat(sessionAudioChunks, sessionAudioBytes);
-      sendAudio(audio);
-      flushAudio();
-      websocket.send(JSON.stringify({ type: "stop_request", total_audio_chunks: audioCount }));
-      finalTimer = setTimeout(() => fail("Aqua realtime retry timed out"), 8000);
-      trace("retry-sent", { audioMs: state.lastAudioMs, chunks: audioCount });
-    } else {
-      flushAudio();
+    flushAudio();
+  } else if (message.type === "set_session_id") {
+    if ((typeof message.session_id === "number" && Number.isSafeInteger(message.session_id))
+        || (typeof message.session_id === "string" && /^\d+$/.test(message.session_id))) {
+      sessionContext.id = message.session_id;
+      trace("session-id", { sessionId: sessionContext.id });
     }
   } else if (message.type === "document_update") {
     const text = displayText(message);
     state.liveText = text;
     if (message.final && state.phase === "processing") void complete(text);
   } else if (message.type === "error") {
-    fail(message.message || "Aqua realtime transcription failed");
+    fail(message.message || "Aqua realtime transcription failed", false);
   }
 }
 
-function retryFinalization(reason) {
-  retryCount += 1;
+async function recoverSession(reason) {
+  const context = sessionContext;
+  if (!context || context.recoveryType || delivery?.claimed) return;
   clearTimeout(finalTimer);
   finalTimer = null;
-  state.phase = "processing";
-  state.stage = "retrying";
-  state.error = "";
+  context.recoveryType = context.stopSent ? "server_recovery" : "http";
+  retryCount = 1;
+  state.stage = "recovering";
   websocketReady = false;
-  socketGeneration += 1;
-  try { websocket?.close(); } catch {}
-  websocket = null;
-  audioCount = 0;
-  pendingAudio = Buffer.alloc(0);
-  queuedPackets = [];
-  trace("retry-finalization", { reason, audioMs: state.lastAudioMs, attempt: retryCount });
-  const generation = socketGeneration;
-  setTimeout(() => {
-    if (generation === socketGeneration && state.phase === "processing") {
-      openWebsocket(sessionConfig, sessionTarget, true);
-    }
-  }, 120);
+  socketGeneration += 1; // A late WebSocket result cannot also insert text.
+  trace("recovery-start", { reason, sessionId: context.id, type: context.recoveryType });
+  try {
+    const text = await recoverRecording({
+      stopSent: context.stopSent, sessionId: context.id,
+      audio: context.stopSent ? null : Buffer.concat(sessionAudioChunks, sessionAudioBytes),
+      language: sessionConfig.language, token: sessionConfig.token,
+      signal: context.controller.signal, socket: websocket,
+    });
+    if (sessionContext !== context || context.controller.signal.aborted) return;
+    await complete(text);
+  } catch (error) {
+    if (sessionContext === context && !context.controller.signal.aborted) fail(error.message, false);
+  }
 }
 
-function fail(message) {
+function fail(message, recover = true) {
+  if (recover && sessionContext?.stopping) return;
   if (delivery?.claimed) return;
   trace("failure", { phase: state.phase, message, retryCount });
-  if (shouldRetryFinalization(state.phase, retryCount, sessionAudioBytes)) {
-    retryFinalization(message);
+  if (recover && state.phase === "processing" && sessionContext && !sessionContext.recoveryType) {
+    void recoverSession(message);
     return;
   }
+  sessionContext?.controller.abort();
   clearTimeout(finalTimer);
   finalTimer = null;
   state.phase = "error";
@@ -501,28 +515,38 @@ function startPayload(config, target) {
   };
 }
 
-function openWebsocket(config, target, replay = false) {
+function openWebsocket(config, target) {
   const generation = ++socketGeneration;
   const socket = new WebSocket(`wss://realtime.aquavoice.com?token=${encodeURIComponent(config.token)}`);
   websocket = socket;
-  delivery = createDelivery(socket);
+  const context = sessionContext;
+  delivery = createDelivery(socket, (transport, message) => {
+    if (context.recoveryType && !message.canceled) {
+      void reportRecoveryOutcome(context.id, context.recoveryType, message.content, config.token)
+        .catch((error) => trace("recovery-outcome-failed", { message: error.message }));
+    } else finishSocket(transport, message);
+  });
   socket.binaryType = "arraybuffer";
   socket.onopen = () => {
     if (generation !== socketGeneration) return;
     socket.send(JSON.stringify(startPayload(config, target)));
-    state.stage = replay ? "retry-waiting-ready" : "waiting-ready";
+    state.stage = "waiting-ready";
   };
   socket.onmessage = (event) => {
-    if (generation === socketGeneration) handleServerMessage(event, replay);
+    if (generation === socketGeneration) handleServerMessage(event);
   };
   socket.onerror = () => {
-    if (generation === socketGeneration) fail("Aqua realtime WebSocket connection failed");
+    if (generation === socketGeneration) {
+      if (state.phase === "recording") void stop();
+      else fail("Aqua realtime WebSocket connection failed");
+    }
   };
   socket.onclose = (event) => {
     if (generation !== socketGeneration) return;
     if (state.phase === "recording" || state.phase === "processing") {
       const detail = event.reason ? `: ${event.reason}` : ` (code ${event.code})`;
-      fail(`Aqua realtime WebSocket disconnected${detail}`);
+      if (state.phase === "recording") void stop();
+      else fail(`Aqua realtime WebSocket disconnected${detail}`);
     }
   };
 }
@@ -550,6 +574,7 @@ function start() {
   sessionConfig = config;
   sessionTarget = target;
   retryCount = 0;
+  sessionContext = { id: null, stopSent: false, recoveryType: null, controller: new AbortController() };
   trace("recording-start", { targetClass: state.targetClass, terminal: state.targetTerminal });
 
   openWebsocket(config, target);
@@ -561,6 +586,8 @@ async function stop() {
   const generation = socketGeneration;
   const capture = recorder;
   const drain = recorderDrain;
+  const context = sessionContext;
+  context.stopping = true;
   state.lastAudioMs = state.recordingStarted ? Date.now() - state.recordingStarted : 0;
   trace("recording-stop", { audioMs: state.lastAudioMs });
   if (state.lastAudioMs < MIN_CAPTURE_MS) {
@@ -575,6 +602,7 @@ async function stop() {
   try { capture?.kill("SIGINT"); } catch {}
   if (capture) await capture.exited;
   await drain;
+  context.stopping = false;
   if (generation !== socketGeneration) return;
   recorder = null;
   if (pendingAudio.length) {
@@ -583,11 +611,14 @@ async function stop() {
   }
   flushAudio();
   if (!websocketReady || websocket?.readyState !== WebSocket.OPEN) return fail("Aqua realtime connection was not ready");
-  websocket.send(JSON.stringify({ type: "stop_request", total_audio_chunks: audioCount }));
-  finalTimer = setTimeout(() => fail("Aqua realtime finalization timed out"), 8000);
+  try { websocket.send(JSON.stringify({ type: "stop_request", total_audio_chunks: audioCount })); }
+  catch { return fail("Aqua realtime connection closed before stop_request"); }
+  sessionContext.stopSent = true;
+  finalTimer = setTimeout(() => fail("Aqua realtime finalization timed out"), finalizationTimeout(state.lastAudioMs));
 }
 
 function cancel() {
+  sessionContext?.controller.abort();
   try { recorder?.kill("SIGKILL"); } catch {}
   recorder = null;
   try { delivery?.cancel(); } catch {}
@@ -761,7 +792,7 @@ async function runClient(command) {
   if (!JSON.parse(response).ok) process.exitCode = 1;
 }
 
-export { createDelivery, finishSocket, audioFrame, displayText, focusIsStable, gestureDecision, isTerminalClass, isTrackedHotkeyCode, pasteCommand, pasteShortcut, shouldRetryFinalization, startPayload };
+export { createDelivery, finishSocket, audioFrame, displayText, focusIsStable, gestureDecision, isTerminalClass, isTrackedHotkeyCode, pasteCommand, pasteShortcut, startPayload };
 
 if (import.meta.main) {
   const command = process.argv[2];
@@ -770,9 +801,7 @@ if (import.meta.main) {
     startControlServer();
     scanInputs();
     setInterval(scanInputs, 1000);
-    void refreshTranscriptCustomizations().catch((error) => trace("dictionary-sync-failed", { message: error.message }));
-    setInterval(() => {
-      void refreshTranscriptCustomizations().catch((error) => trace("dictionary-sync-failed", { message: error.message }));
-    }, 60000);
+    if (readAquaToken(settings())) void refreshTranscriptCustomizations().catch((error) => trace("dictionary-sync-failed", { message: error.message }));
+
   }
 }

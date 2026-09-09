@@ -36,7 +36,9 @@ case "${1:-status}" in
     ;;
   dictionary)
     action="${2:?add|remove|sync}"
-    if [[ "$action" == "sync" ]]; then
+    if [[ "$action" == "probe" ]]; then
+      run_js "$SETTINGS" probe-customizations
+    elif [[ "$action" == "sync" ]]; then
       run_js "$SETTINGS" sync-customizations
     elif [[ "$action" == "add" || "$action" == "remove" ]]; then
       IFS= read -r word

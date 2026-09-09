@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "frankmi.aqua-voice",
   "name": "Aqua Voice",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "author": "Frank M",
   "license": "MIT",
   "description": "Omarchy-native Aqua Voice dictation with a realtime JavaScript backend and no Electron frontend.",

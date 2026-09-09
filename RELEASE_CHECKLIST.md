@@ -1,4 +1,4 @@
-# Aqua Voice 1.0.1 release checks
+# Aqua Voice 1.0.2 release checks
 
 ## Automated coverage
 
@@ -21,4 +21,4 @@ Tests include a clean staged installation in an isolated home directory, compila
 - Check keyboard-access denial and granting access in that user's environment.
 - Ask Aqua to confirm delivered outcomes for normal, empty, canceled, and recovered sessions. A successful paste shortcut cannot prove how much text the destination actually accepted.
 
-The client is unofficial. No claim of Aqua endorsement or universal Omarchy compatibility is made. The animated recording bars are decorative by user preference. Local history is not Aqua cloud history. New-WebSocket retry is implemented; HTTP recovery is not.
+The client is unofficial. No claim of Aqua endorsement or universal Omarchy compatibility is made. The animated recording bars are decorative by user preference. Local history is not Aqua cloud history. Finalization recovery polls the original session after close code 4003; HTTP retranscription is limited to failures before stop_request. No new-WebSocket replay is used.

@@ -198,6 +198,25 @@ async function refreshTranscriptCustomizations() {
   return requestTranscriptCustomizations();
 }
 
+async function probeTranscriptCustomizations(fetcher = fetch) {
+  const config = readAquaSettings();
+  const token = readAquaToken(config);
+  if (!token) return false;
+  const response = await fetcher(customizationsUrl, {
+    method: "HEAD", headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(10000),
+  });
+  if (!response.ok) throw new Error(`Aqua personalization revision check failed (${response.status})`);
+  const header = response.headers.get("X-Transcript-Customizations-Revision");
+  if (header === null || !/^\d+$/.test(header)) return false;
+  const incoming = Number(header);
+  const stored = config._aquaOmarchyCustomizationRevision;
+  if (Number.isSafeInteger(incoming) && (!Number.isFinite(stored) || incoming > stored)) {
+    await refreshTranscriptCustomizations();
+    return true;
+  }
+  return false;
+}
+
 async function applyDictionaryOperation(type, input) {
   const word = String(input || "").trim();
   if (!word || word.length > 100 || /[\r\n]/.test(word)) {
@@ -297,6 +316,7 @@ function output(value, ok = true) {
 }
 
 export {
+  probeTranscriptCustomizations,
   requestTranscriptCustomizations,
   customizationRequest,
   appendHistoryEntry,
@@ -326,6 +346,10 @@ if (import.meta.main) {
     else if (command === "set") output({ settings: setSetting(process.argv[3], process.argv[4]) });
     else if (command === "toggle") output({ settings: toggleSetting(process.argv[3]) });
     else if (command === "clear-history") output({ history: clearHistory() });
+    else if (command === "probe-customizations") {
+      await probeTranscriptCustomizations();
+      output({});
+    }
     else if (command === "sync-customizations") {
       await refreshTranscriptCustomizations();
       output({});

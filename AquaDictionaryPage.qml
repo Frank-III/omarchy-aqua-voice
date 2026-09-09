@@ -52,7 +52,7 @@ Item {
     fontFamily: root.fontFamily
     Button {
       text: "Refresh"
-      onClicked: root.actionRequested(["dictionary", "sync"], "")
+      onClicked: root.actionRequested(["dictionary", "probe"], "")
     }
   }
 

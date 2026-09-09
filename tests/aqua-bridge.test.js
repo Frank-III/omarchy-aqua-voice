@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { createDelivery, finishSocket, audioFrame, displayText, focusIsStable, gestureDecision, isTerminalClass, isTrackedHotkeyCode, pasteCommand, pasteShortcut, shouldRetryFinalization, startPayload } from "../bin/aqua-bridge.js";
+import { createDelivery, finishSocket, audioFrame, displayText, focusIsStable, gestureDecision, isTerminalClass, isTrackedHotkeyCode, pasteCommand, pasteShortcut, startPayload } from "../bin/aqua-bridge.js";
 import { customizationRequest, normalizeTranscriptCustomizations, publicSettings, shouldApplyCustomizationRevision } from "../bin/aqua-settings.js";
 import { parseCallbackUrl, signInUrl } from "../bin/aqua-auth.js";
 import { defaultHotkeyConfig, hotkeyMatches, normalizeModifiers, replaceManagedBinding } from "../bin/aqua-hotkey.js";
@@ -131,12 +131,7 @@ describe("Aqua realtime protocol", () => {
     expect(focusIsStable(null, { address: "0xabc" })).toBe(false);
   });
 
-  test("retries one failed finalization when buffered audio exists", () => {
-    expect(shouldRetryFinalization("processing", 0, 6400)).toBe(true);
-    expect(shouldRetryFinalization("processing", 1, 6400)).toBe(false);
-    expect(shouldRetryFinalization("recording", 0, 6400)).toBe(false);
-    expect(shouldRetryFinalization("processing", 0, 0)).toBe(false);
-  });
+
 });
 
 
@@ -177,7 +172,7 @@ describe("dictation completion", () => {
     expect(session.claimed).toBe(true);
   });
 
-  test("copy-only and failed insertion report zero delivered text", async () => {
+  test("clipboard and panel fallback report the full final text", async () => {
     for (const fails of [false, true]) {
       const messages = [];
       const session = createDelivery({}, (_, message) => messages.push(message));
@@ -187,7 +182,7 @@ describe("dictation completion", () => {
       });
       if (fails) await expect(result).rejects.toThrow("paste failed");
       else expect(await result).toBe("Copied");
-      expect(messages).toEqual([{ type: "stop", content: "", canceled: false, mode: "hands_free" }]);
+      expect(messages).toEqual([{ type: "stop", content: "text", canceled: false, mode: "hands_free" }]);
     }
   });
 

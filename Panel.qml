@@ -114,6 +114,31 @@ Panel {
   }
   Timer { id: refreshDelay; interval: 120; onTriggered: if (root.svc) root.svc.refresh() }
 
+  // Only the open Dictionary page probes the account revision; this is not
+  // part of the one-second local status refresh.
+  Process {
+    id: dictionaryProbe
+    command: [root.control, "dictionary", "probe"]
+    stdout: StdioCollector {}
+    stderr: StdioCollector {}
+    onExited: function(exitCode) {
+      if (root.svc) root.svc.refresh()
+      if (exitCode !== 0 && root.opened && root.page === "dictionary") {
+        var result = null
+        try { result = JSON.parse(dictionaryProbe.stderr.text) } catch (_) {}
+        root.actionFailed = true
+        root.actionMessage = result && result.error ? result.error : "Could not check dictionary updates"
+      }
+    }
+  }
+  Timer {
+    interval: 7000
+    running: root.opened && root.page === "dictionary" && root.svc && root.svc.tokenPresent
+    repeat: true
+    triggeredOnStart: true
+    onTriggered: if (!dictionaryProbe.running && !action.running) dictionaryProbe.running = true
+  }
+
   Row {
     id: barRow
     anchors.centerIn: parent
