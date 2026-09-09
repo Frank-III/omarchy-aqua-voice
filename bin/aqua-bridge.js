@@ -58,6 +58,8 @@ const state = {
 let websocket = null;
 let websocketReady = false;
 let recorder = null;
+let recorderDrain = Promise.resolve();
+let delivery = null;
 let audioCount = 0;
 let pendingAudio = Buffer.alloc(0);
 let queuedPackets = [];
@@ -207,10 +209,12 @@ async function setClipboard(text) {
   }
 }
 
-async function paste(text) {
+async function paste(text, isActive = () => true) {
+  if (!isActive()) return "Canceled";
   const target = activeTarget();
   await setClipboard(text);
   await waitForHotkeyRelease();
+  if (!isActive()) return "Canceled";
   const current = activeTarget();
   if (!focusIsStable(target, current)) {
     trace("paste-skipped", { reason: "focus-changed", targetClass: target?.class || "", currentClass: current?.class || "" });
@@ -244,10 +248,12 @@ function showCompletion(label) {
 function displayText(message) {
   const annotated = message.display_text_annotated;
   if (Array.isArray(annotated)) {
-    const value = annotated.map((part) => typeof part === "string" ? part : part?.text || "").join("").trim();
-    if (value) return value;
+    return annotated
+      .filter((part) => part?.type !== "deleted")
+      .map((part) => typeof part === "string" ? part : part?.text || "")
+      .join("");
   }
-  return String(message.display_text || message.raw_text || message.text || "").trim();
+  return String(message.display_text || message.raw_text || message.text || "");
 }
 
 function audioFrame(payload) {
@@ -273,35 +279,92 @@ function flushAudio() {
   for (const packet of queuedPackets.splice(0)) websocket.send(packet);
 }
 
+// Keep the transport alive for the server's close, with bounded cleanup if it
+// never closes. WebSocket.close queues its close frame behind pending messages.
+function finishSocket(socket, message, timeoutMs = 5000) {
+  if (!socket || socket.readyState >= WebSocket.CLOSING) return;
+  const timer = setTimeout(() => socket.close(1000, "stop timeout"), timeoutMs);
+  timer.unref?.();
+  socket.addEventListener("close", () => clearTimeout(timer), { once: true });
+  const send = () => {
+    try { socket.send(JSON.stringify(message)); }
+    catch (error) {
+      clearTimeout(timer);
+      trace("stop-send-failed", { message: error.message });
+      socket.close();
+    }
+  };
+  if (socket.readyState === WebSocket.CONNECTING) {
+    socket.addEventListener("open", send, { once: true });
+  } else send();
+}
+
+function createDelivery(socket, report = finishSocket) {
+  let claimed = false;
+  let canceled = false;
+  return {
+    get claimed() { return claimed; },
+    cancel() {
+      if (canceled) return;
+      canceled = true;
+      report(socket, { type: "stop", canceled: true });
+    },
+    async run(text, insert) {
+      if (claimed || canceled) return null;
+      claimed = true; // Claim before insertion yields, including empty finals.
+      let outcome = "No text returned";
+      try {
+        if (text) outcome = await insert(text, () => !canceled);
+        return canceled ? null : outcome;
+      } finally {
+        if (!canceled) report(socket, {
+          type: "stop",
+          content: outcome === "Pasted" ? text : "",
+          canceled: false,
+          mode: "hands_free",
+        });
+      }
+    },
+  };
+}
+
 async function complete(text) {
+  const currentDelivery = delivery;
+  if (!currentDelivery || currentDelivery.claimed) return;
   clearTimeout(finalTimer);
   finalTimer = null;
-  state.liveText = text;
-  state.latestTranscript = text;
   state.lastLatencyMs = state.processingStarted ? Date.now() - state.processingStarted : 0;
   state.processingStarted = 0;
   trace("transcript-final", { audioMs: state.lastAudioMs, latencyMs: state.lastLatencyMs, targetClass: state.targetClass });
-  if (!settings().privacyMode) {
-    state.history = appendHistoryEntry({
-      text,
-      audioMs: state.lastAudioMs,
-      latencyMs: state.lastLatencyMs,
-      targetClass: state.targetClass,
-    });
-  }
   try {
-    const outcome = await paste(text);
+    const outcome = await currentDelivery.run(text, paste);
+    if (delivery !== currentDelivery || outcome === null) return;
+    state.liveText = text;
+    if (text) {
+      state.latestTranscript = text;
+      if (!settings().privacyMode) {
+        state.history = appendHistoryEntry({
+          text,
+          audioMs: state.lastAudioMs,
+          latencyMs: state.lastLatencyMs,
+          targetClass: state.targetClass,
+        });
+      }
+    }
     state.error = "";
     showCompletion(outcome);
   } catch (error) {
+    if (delivery !== currentDelivery) return;
     state.phase = "error";
     state.error = error.message;
   } finally {
-    socketGeneration += 1;
-    websocket?.close(1000, "complete");
-    websocket = null;
-    websocketReady = false;
-    clearSessionAudio();
+    if (delivery === currentDelivery) {
+      socketGeneration += 1;
+      websocket = null;
+      websocketReady = false;
+      delivery = null;
+      clearSessionAudio();
+    }
   }
 }
 
@@ -323,8 +386,8 @@ function handleServerMessage(event, replay) {
     }
   } else if (message.type === "document_update") {
     const text = displayText(message);
-    if (text) state.liveText = text;
-    if (message.final && text && state.phase === "processing") void complete(text);
+    state.liveText = text;
+    if (message.final && state.phase === "processing") void complete(text);
   } else if (message.type === "error") {
     fail(message.message || "Aqua realtime transcription failed");
   }
@@ -345,10 +408,16 @@ function retryFinalization(reason) {
   pendingAudio = Buffer.alloc(0);
   queuedPackets = [];
   trace("retry-finalization", { reason, audioMs: state.lastAudioMs, attempt: retryCount });
-  setTimeout(() => openWebsocket(sessionConfig, sessionTarget, true), 120);
+  const generation = socketGeneration;
+  setTimeout(() => {
+    if (generation === socketGeneration && state.phase === "processing") {
+      openWebsocket(sessionConfig, sessionTarget, true);
+    }
+  }, 120);
 }
 
 function fail(message) {
+  if (delivery?.claimed) return;
   trace("failure", { phase: state.phase, message, retryCount });
   if (shouldRetryFinalization(state.phase, retryCount, sessionAudioBytes)) {
     retryFinalization(message);
@@ -379,12 +448,14 @@ function startRecorder() {
     stdout: "pipe",
     stderr: "pipe",
   });
-  void (async () => {
-    const reader = recorder.stdout.getReader();
+  const generation = socketGeneration;
+  const capture = recorder;
+  recorderDrain = (async () => {
+    const reader = capture.stdout.getReader();
     try {
       while (true) {
         const { done, value } = await reader.read();
-        if (done) break;
+        if (done || generation !== socketGeneration) break;
         const chunk = Buffer.from(value);
         sessionAudioChunks.push(chunk);
         sessionAudioBytes += chunk.length;
@@ -419,7 +490,7 @@ function startPayload(config, target) {
     skip_llm: Boolean(config.skipLlm),
     casual_messaging: Boolean(config.casualMessaging),
     metadata: {
-      client: "desktop",
+      client: "linux",
       location: "omarchy",
       version: VERSION,
       activation_mode: "hands_free",
@@ -434,6 +505,7 @@ function openWebsocket(config, target, replay = false) {
   const generation = ++socketGeneration;
   const socket = new WebSocket(`wss://realtime.aquavoice.com?token=${encodeURIComponent(config.token)}`);
   websocket = socket;
+  delivery = createDelivery(socket);
   socket.binaryType = "arraybuffer";
   socket.onopen = () => {
     if (generation !== socketGeneration) return;
@@ -456,6 +528,7 @@ function openWebsocket(config, target, replay = false) {
 }
 
 function start() {
+  if (state.phase === "recording" || state.phase === "processing") return;
   const config = settings();
   config.token = readAquaToken(config, true);
   if (!config.token) throw new Error("Aqua login token is missing");
@@ -484,6 +557,10 @@ function start() {
 }
 
 async function stop() {
+  if (state.phase !== "recording") return;
+  const generation = socketGeneration;
+  const capture = recorder;
+  const drain = recorderDrain;
   state.lastAudioMs = state.recordingStarted ? Date.now() - state.recordingStarted : 0;
   trace("recording-stop", { audioMs: state.lastAudioMs });
   if (state.lastAudioMs < MIN_CAPTURE_MS) {
@@ -495,8 +572,10 @@ async function stop() {
   state.processingStarted = Date.now();
   state.phase = "processing";
   state.stage = "finalizing";
-  try { recorder?.kill("SIGINT"); } catch {}
-  if (recorder) await recorder.exited;
+  try { capture?.kill("SIGINT"); } catch {}
+  if (capture) await capture.exited;
+  await drain;
+  if (generation !== socketGeneration) return;
   recorder = null;
   if (pendingAudio.length) {
     sendAudio(pendingAudio);
@@ -511,7 +590,8 @@ async function stop() {
 function cancel() {
   try { recorder?.kill("SIGKILL"); } catch {}
   recorder = null;
-  try { websocket?.send(JSON.stringify({ type: "stop", canceled: true })); websocket?.close(); } catch {}
+  try { delivery?.cancel(); } catch {}
+  delivery = null;
   websocket = null;
   websocketReady = false;
   socketGeneration += 1;
@@ -675,7 +755,7 @@ async function runClient(command) {
   if (!JSON.parse(response).ok) process.exitCode = 1;
 }
 
-export { audioFrame, displayText, focusIsStable, gestureDecision, isTerminalClass, isTrackedHotkeyCode, pasteCommand, pasteShortcut, shouldRetryFinalization, startPayload };
+export { createDelivery, finishSocket, audioFrame, displayText, focusIsStable, gestureDecision, isTerminalClass, isTrackedHotkeyCode, pasteCommand, pasteShortcut, shouldRetryFinalization, startPayload };
 
 if (import.meta.main) {
   const command = process.argv[2];

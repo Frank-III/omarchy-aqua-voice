@@ -22,6 +22,9 @@ The bar widget uses Aqua Voice's official orb asset from `https://aquavoice.com/
 - Account opens Aqua's official browser sign-in, receives its `aquavoice://token=…` callback, validates the account, and stores the token in Secret Service instead of plaintext settings.
 - Captures shorter than 100 ms are discarded as accidental taps.
 - Fast finalizations that disconnect before returning text are retried once from an in-memory PCM buffer; the buffer is cleared after completion or failure.
+- Final annotated text preserves whitespace and excludes deleted segments. Empty final results finish immediately with “No text returned”.
+- Each completed WebSocket session reports delivered text with `stop.content`, then waits for the server to close (with a five-second cleanup timeout). Copy-only or failed paste reports empty content; cancellation reports `canceled: true`. Once final delivery begins, duplicate finals and disconnects cannot trigger another automatic insertion.
+- Stopping capture waits for both recorder exit and the audio-reader drain before flushing the final partial chunk and sending `stop_request`.
 - Paste waits for the physical `Super+Shift+F23` release events before injecting `Ctrl+V` or Omarchy's tagged-terminal `Shift+Insert`, preventing the stop chord from leaking into SSH/TUI applications.
 - The release guard includes physical Alt because this Omarchy setup uses `altwin:swap_alt_win`; the physical Alt key is logical Super.
 - Settings can record a new global shortcut with a one-shot C helper. The helper exits after one chord, JavaScript applies XKB remaps, and the generated Hyprland binding swallows the chord before the backend handles double-tap/start/stop.

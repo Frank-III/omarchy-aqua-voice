@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { audioFrame, displayText, focusIsStable, gestureDecision, isTerminalClass, isTrackedHotkeyCode, pasteCommand, pasteShortcut, shouldRetryFinalization, startPayload } from "../bin/aqua-bridge.js";
+import { createDelivery, finishSocket, audioFrame, displayText, focusIsStable, gestureDecision, isTerminalClass, isTrackedHotkeyCode, pasteCommand, pasteShortcut, shouldRetryFinalization, startPayload } from "../bin/aqua-bridge.js";
 import { normalizeTranscriptCustomizations, publicSettings, shouldApplyCustomizationRevision } from "../bin/aqua-settings.js";
 import { parseCallbackUrl, signInUrl } from "../bin/aqua-auth.js";
 import { defaultHotkeyConfig, hotkeyMatches, normalizeModifiers, replaceManagedBinding } from "../bin/aqua-hotkey.js";
@@ -57,6 +57,7 @@ describe("Aqua realtime protocol", () => {
   test("uses Aqua hands-free realtime start metadata", () => {
     const payload = startPayload({ language: "en", transcriptionModel: "avalon-v1.1", casualMessaging: true }, { class: "chatgpt" });
     expect(payload.type).toBe("start");
+    expect(payload.metadata.client).toBe("linux");
     expect(payload.audio_format).toBe("pcm_s16le");
     expect(payload.streaming).toBe(true);
     expect(payload.metadata.activation_mode).toBe("hands_free");
@@ -136,4 +137,128 @@ describe("Aqua realtime protocol", () => {
     expect(shouldRetryFinalization("recording", 0, 6400)).toBe(false);
     expect(shouldRetryFinalization("processing", 0, 0)).toBe(false);
   });
+});
+
+
+describe("dictation completion", () => {
+  test("preserves annotated whitespace and out-of-window text, excluding deletions", () => {
+    expect(displayText({ display_text_annotated: [
+      { type: "out_of_window", text: " previous " },
+      { type: "deleted", text: "wrong" },
+      { type: "unchanged", text: "current " },
+    ] })).toBe(" previous current ");
+    expect(displayText({ display_text_annotated: [], raw_text: "stale" })).toBe("");
+    expect(displayText({ display_text_annotated: [{ type: "deleted", text: "stale" }], raw_text: "stale" })).toBe("");
+  });
+
+  test("reports delivery only after insertion and claims duplicate finals immediately", async () => {
+    const messages = [];
+    const session = createDelivery({}, (_, message) => messages.push(message));
+    let resolvePaste;
+    let calls = 0;
+    const pending = session.run(" hello ", () => {
+      calls++;
+      return new Promise((resolve) => { resolvePaste = resolve; });
+    });
+    expect(session.claimed).toBe(true);
+    expect(messages).toEqual([]);
+    expect(await session.run("duplicate", () => { calls++; })).toBeNull();
+    resolvePaste("Pasted");
+    expect(await pending).toBe("Pasted");
+    expect(calls).toBe(1);
+    expect(messages).toEqual([{ type: "stop", content: " hello ", canceled: false, mode: "hands_free" }]);
+  });
+
+  test("empty finals end immediately without attempting paste", async () => {
+    const messages = [];
+    const session = createDelivery({}, (_, message) => messages.push(message));
+    expect(await session.run("", () => { throw new Error("must not paste"); })).toBe("No text returned");
+    expect(messages[0].content).toBe("");
+    expect(session.claimed).toBe(true);
+  });
+
+  test("copy-only and failed insertion report zero delivered text", async () => {
+    for (const fails of [false, true]) {
+      const messages = [];
+      const session = createDelivery({}, (_, message) => messages.push(message));
+      const result = session.run("text", async () => {
+        if (fails) throw new Error("paste failed");
+        return "Copied";
+      });
+      if (fails) await expect(result).rejects.toThrow("paste failed");
+      else expect(await result).toBe("Copied");
+      expect(messages).toEqual([{ type: "stop", content: "", canceled: false, mode: "hands_free" }]);
+    }
+  });
+
+  test("cancellation invalidates pending insertion without a second stop", async () => {
+    const messages = [];
+    const session = createDelivery({}, (_, message) => messages.push(message));
+    let resume;
+    let inserted = false;
+    const pending = session.run("text", async (text, isActive) => {
+      await new Promise((resolve) => { resume = resolve; });
+      if (!isActive()) return "Canceled";
+      inserted = true;
+      return "Pasted";
+    });
+    session.cancel();
+    session.cancel();
+    resume();
+    expect(await pending).toBeNull();
+    expect(inserted).toBe(false);
+    expect(messages).toEqual([{ type: "stop", canceled: true }]);
+  });
+
+  test("waits for server close and bounds cleanup when it never arrives", async () => {
+    class Socket extends EventTarget {
+      readyState = WebSocket.OPEN;
+      sent = [];
+      closes = 0;
+      send(value) { this.sent.push(JSON.parse(value)); }
+      close() { this.closes++; this.dispatchEvent(new Event("close")); }
+    }
+    const socket = new Socket();
+    finishSocket(socket, { type: "stop", content: "text", canceled: false }, 15);
+    expect(socket.sent).toHaveLength(1);
+    expect(socket.closes).toBe(0);
+    socket.dispatchEvent(new Event("close"));
+    await Bun.sleep(30);
+    expect(socket.closes).toBe(0);
+    const stalled = new Socket();
+    finishSocket(stalled, { type: "stop", canceled: true }, 15);
+    await Bun.sleep(30);
+    expect(stalled.closes).toBe(1);
+  });
+});
+
+
+test("real WebSocket receives delivery stop before server-initiated close", async () => {
+  let received;
+  const reportReceived = new Promise((resolve) => { received = resolve; });
+  const server = Bun.serve({
+    port: 0,
+    fetch(request, server) { if (server.upgrade(request)) return; return new Response(null, { status: 400 }); },
+    websocket: {
+      message(socket, message) {
+        received(JSON.parse(String(message)));
+        socket.close(1000, "delivered");
+      },
+    },
+  });
+  const socket = new WebSocket(`ws://127.0.0.1:${server.port}`);
+  try {
+    await new Promise((resolve, reject) => {
+      socket.addEventListener("open", resolve, { once: true });
+      socket.addEventListener("error", reject, { once: true });
+    });
+    const closed = new Promise((resolve) => socket.addEventListener("close", resolve, { once: true }));
+    const session = createDelivery(socket);
+    await session.run("delivered text", async () => "Pasted");
+    expect(await reportReceived).toEqual({ type: "stop", content: "delivered text", canceled: false, mode: "hands_free" });
+    expect((await closed).reason).toBe("delivered");
+  } finally {
+    socket.close();
+    await server.stop(true);
+  }
 });
