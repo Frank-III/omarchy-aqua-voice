@@ -4,6 +4,16 @@ An Omarchy-native Aqua Voice client. It uses a plain JavaScript/Bun backend for 
 
 The bar widget uses Aqua Voice's official orb asset from `https://aquavoice.com/images/icons/orb-128.png`.
 
+## Screenshots
+
+Settings and shortcut controls:
+
+![Aqua Voice settings panel](preview.png)
+
+The compact recording overlay stays visible without taking focus:
+
+![Aqua Voice recording overlay on the Omarchy desktop](assets/recording-overlay.png)
+
 ## Interaction
 
 - Choose a shortcut in **Settings → Record hotkey**. Double-tap it to start hands-free recording, then tap once to finish and paste. The legacy fallback is `Super+Shift+F23`; most keyboards need a recorded shortcut.
