@@ -13,7 +13,7 @@ Static inspection target: Aqua Voice macOS 0.19.8, extracted Electron renderer a
 - Bounded local transcript history with audio/finalization timing and clear-all.
 - Aqua account, physical hotkey, backend, WebSocket, audio transport, and usage status.
 - Account-synced Dictionary list with add and confirmed-remove actions.
-- Browser sign-in, secure callback handling, keyring token storage, account status, and logout.
+- Browser sign-in with a D-Bus-activated callback receiver, stdin-only token forwarding, keyring token storage, account status, and logout.
 - One-shot global hotkey recording with XKB-aware modifier normalization and managed Hyprland binding rollback.
 - Account-backed replacement and writing-instruction editors, with visible failures and draft preservation.
 

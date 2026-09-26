@@ -1,4 +1,4 @@
-# Aqua Voice 1.0.2 release checks
+# Aqua Voice 1.0.3 release checks
 
 ## Automated coverage
 
@@ -40,3 +40,12 @@ First-run setup describes backend installation, login startup, and login-link re
 Settings are stored separately at `~/.config/aqua-voice/settings.json`. Import copies preferences without copying a plaintext token and does not alter the source; a token is validated and stored in the keyring only when import is selected. A prior login handler is preserved by default, backed up when replacement is selected, and can be restored with `aqua-voice-control restore-login-handler` without overriding a subsequent user choice.
 
 Advanced users migrating a patched installation can run `bash install.sh --import-existing` from the plugin directory. The installer explains setup and asks for confirmation; import preserves the source and refuses to overwrite existing plugin preferences.
+
+## 1.0.3 authentication regression checks
+
+- WebSocket URL contains no credential; Authorization header has the bearer token. Saved-login header auth reached `ready` in a live no-audio check; invalid-token header auth was rejected.
+- Desktop callback has no URI-bearing Exec argument and activates over D-Bus. The isolated GIO launch test verifies callback delivery and process arguments.
+- Stage installation compiles both native helpers and installs the D-Bus service. Existing plugin-owned callback registration is upgraded; unrelated handlers remain opt-in.
+- Before resubmission, perform browser sign-in with the new D-Bus callback and check the browser/portal path as well as the helper. The old submission was closed; use a new submission linking the credential remediation evidence.
+
+**Live portal handoff verified:** setup now reloads D-Bus activation and migrates only this plugin's stale portal handler entries. The installed portal → callback → API validation → keyring → backend restart path completed using the existing login. The desktop entry has no Exec fallback. Current Chromium's direct portal path is supported; generic xdg-open callback launch is not. A fresh provider sign-in remains a manual UI smoke test, distinct from the successful live credential handoff.

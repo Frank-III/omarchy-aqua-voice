@@ -24,6 +24,13 @@ const checks = [
   ["PCM audio format", renderer, 'audio_format:"pcm_s16le"'],
   ["stop request", renderer, 'type:"stop_request"'],
   ["annotated document text", renderer, "display_text_annotated"],
+  ["session ID message", renderer, "set_session_id"],
+  ["original-session recovery", renderer, "session-recovery/"],
+  ["recovery close code", renderer, "=4003"],
+  ["HTTP retranscription", renderer, "websocket_fallback"],
+  ["recovery outcome reporting", main, "recovery-outcome/"],
+  ["dictionary revision", main, "x-transcript-customizations-revision"],
+  ["replacement operation", main, "replacement_upsert"],
   ["dictionary endpoint", main, "/users/transcript-customizations/"],
   ["profile validation", main, "users/profile/"],
   ["desktop sign-in", renderer, "/sign-in?origin="],
@@ -37,6 +44,8 @@ try { version = JSON.parse(packageText).version || version; } catch {}
 
 console.log(JSON.stringify({
   compatible: missing.length === 0,
+  verificationScope: "Static anchor presence only; not a behavioral compatibility guarantee",
+  sendsStreamingModelOverride: /streaming_model:/.test(main),
   aquaVersion: version,
   checks,
   missing,

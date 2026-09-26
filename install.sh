@@ -30,6 +30,7 @@ fi
 BIN_DIR="$HOME/.local/bin"
 UNIT_DIR="$HOME/.config/systemd/user"
 APPLICATION_DIR="$HOME/.local/share/applications"
+DBUS_DIR="$HOME/.local/share/dbus-1/services"
 
 if command -v bun >/dev/null; then
   BUN_EXECUTABLE=$(bun -p 'process.execPath')
@@ -40,6 +41,8 @@ else
   exit 1
 fi
 command -v cc >/dev/null || { echo "Install base-devel for the hotkey helper, then run setup again" >&2; exit 1; }
+command -v pkg-config >/dev/null || { echo "Install pkgconf for the secure login helper" >&2; exit 1; }
+pkg-config --exists gio-2.0 || { echo "Install GLib development headers (glib2-devel) for secure login" >&2; exit 1; }
 if ! "$STAGE_ONLY"; then
 [[ -f "$HOME/.config/hypr/bindings.lua" ]] || { echo "This plugin requires Omarchy with Lua Hyprland bindings (~/.config/hypr/bindings.lua)." >&2; exit 1; }
 for helper in jq wl-copy wtype pw-record hyprctl omarchy-shell systemctl; do
@@ -49,7 +52,7 @@ for helper in secret-tool xdg-icon-resource xdg-mime xdg-open; do
   command -v "$helper" >/dev/null || { echo "$helper is required" >&2; exit 1; }
 done
 fi
-mkdir -p "$PREFIX" "$BIN_DIR" "$UNIT_DIR" "$APPLICATION_DIR"
+mkdir -p "$PREFIX" "$BIN_DIR" "$UNIT_DIR" "$APPLICATION_DIR" "$DBUS_DIR"
 printf '#!/bin/bash\nexec %q "$@"\n' "$BUN_EXECUTABLE" > "$PREFIX/runtime"
 chmod 0755 "$PREFIX/runtime"
 install -m 0755 "$ROOT/bin/aqua-bridge.js" "$PREFIX/aqua-bridge"
@@ -59,11 +62,19 @@ install -m 0755 "$ROOT/bin/aqua-auth.js" "$PREFIX/aqua-auth.js"
 install -m 0755 "$ROOT/bin/aqua-hotkey.js" "$PREFIX/aqua-hotkey.js"
 cc -O2 -std=c11 -Wall -Wextra -Werror \
   "$ROOT/native/aqua-hotkey-capture.c" -o "$PREFIX/aqua-hotkey-capture"
+read -r -a gio_cflags <<< "$(pkg-config --cflags gio-2.0)"
+read -r -a gio_libs <<< "$(pkg-config --libs gio-2.0)"
+cc -O2 -std=c11 -Wall -Wextra -Werror "${gio_cflags[@]}" \
+  "$ROOT/native/aqua-login-callback.c" -o "$PREFIX/aqua-voice-callback" "${gio_libs[@]}"
+# D-Bus activation launches only the executable; the URI travels in Open(), not Exec.
+quoted_prefix=${PREFIX//\\/\\\\}
+quoted_prefix=${quoted_prefix//\"/\\\"}
+printf '[D-BUS Service]\nName=io.github.FrankIII.AquaVoice.Login\nExec="%s/aqua-voice-callback" --gapplication-service\n' "$quoted_prefix" > "$DBUS_DIR/io.github.FrankIII.AquaVoice.Login.service"
 install -m 0755 "$ROOT/bin/aqua-login-handler" "$PREFIX/aqua-login-handler"
 install -m 0755 "$ROOT/bin/aqua-voice-control" "$BIN_DIR/aqua-voice-control"
 install -m 0644 "$ROOT/aqua-voice.service" "$UNIT_DIR/aqua-voice.service"
 install -m 0644 "$ROOT/aqua-voice.desktop" "$APPLICATION_DIR/aqua-voice.desktop"
-install -m 0644 "$ROOT/aqua-voice-callback.desktop" "$APPLICATION_DIR/aqua-voice-callback.desktop"
+install -m 0644 "$ROOT/io.github.FrankIII.AquaVoice.Login.desktop" "$APPLICATION_DIR/io.github.FrankIII.AquaVoice.Login.desktop"
 if "$STAGE_ONLY"; then
   echo "Staged backend, controls, desktop entries, and service without activating them."
   exit 0
@@ -74,6 +85,12 @@ if "$REPLACE_HANDLER"; then
   "$PREFIX/aqua-login-handler" claim --replace
 else
   "$PREFIX/aqua-login-handler" claim
+fi
+# Retire only this plugin's old argv-based handler after registration succeeds.
+if [[ "$(xdg-mime query default x-scheme-handler/aquavoice)" == io.github.FrankIII.AquaVoice.Login.desktop ]] &&
+   [[ -f "$APPLICATION_DIR/aqua-voice-callback.desktop" ]] &&
+   [[ $(<"$APPLICATION_DIR/aqua-voice-callback.desktop") == *'Exec=aqua-voice-control auth callback %u'* ]]; then
+  rm -- "$APPLICATION_DIR/aqua-voice-callback.desktop"
 fi
 command -v update-desktop-database >/dev/null && update-desktop-database "$APPLICATION_DIR"
 systemctl --user daemon-reload

@@ -5,6 +5,8 @@ const input = () => ({stopSent:true,sessionId:123,token:"test-token",signal:new 
 
 test("finalization budget grows with recording duration", () => {
   expect(finalizationTimeout(0)).toBe(15000);
+  expect(finalizationTimeout(59999)).toBe(15000);
+  expect(finalizationTimeout(60001)).toBe(16000);
   expect(finalizationTimeout(60000)).toBe(16000);
   expect(finalizationTimeout(180000)).toBe(18000);
 });

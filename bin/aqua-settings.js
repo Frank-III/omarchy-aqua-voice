@@ -60,7 +60,7 @@ function importExistingSettings(config) {
 }
 
 function readKeyringToken() {
-  const result = Bun.spawnSync(["secret-tool", "lookup", "service", "aqua-voice", "account", "default"]);
+  const result = Bun.spawnSync(["secret-tool", "lookup", "service", "aqua-voice", "account", "default"], { timeout: 1500 });
   return result.success ? result.stdout.toString().trim() : "";
 }
 

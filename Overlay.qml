@@ -1,5 +1,6 @@
 import QtQuick
 import Quickshell
+import Quickshell.Io
 import Quickshell.Wayland
 import qs.Commons
 import qs.Ui
@@ -10,7 +11,15 @@ Item {
   readonly property bool shown: service && (service.recording || service.processing || service.phase === "complete" || service.phase === "error")
   readonly property bool recording: service && service.recording
 
+  IpcHandler {
+    target: "frankmi.aqua-voice.hud"
+    function state(): string {
+      return JSON.stringify({ servicePresent: root.service !== null, phase: root.service ? root.service.phase : "missing", shown: root.shown, visible: hud.visible })
+    }
+  }
+
   PanelWindow {
+    id: hud
     visible: root.shown
     anchors { top: true; bottom: true; left: true; right: true }
     color: "transparent"

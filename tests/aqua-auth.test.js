@@ -18,6 +18,8 @@ esac
 `, { mode: 0o755 });
   writeFileSync(join(tools, "systemctl"), '#!/bin/bash\n[[ "${TEST_RESTART_FAIL:-}" != 1 ]] || exit 1\ntouch "$TEST_DIR/restarted"\n', { mode: 0o755 });
   writeFileSync(join(tools, "xdg-open"), '#!/bin/bash\n[[ "${TEST_BROWSER_FAIL:-}" != 1 ]] || exit 1\nprintf "%s" "$1" > "$TEST_DIR/opened-url"\n', { mode: 0o755 });
+  writeFileSync(join(tools, "xdg-mime"), '#!/bin/bash\nprintf "%s\\n" "${TEST_LOGIN_HANDLER:-io.github.FrankIII.AquaVoice.Login.desktop}"\n', {mode:0o755});
+  writeFileSync(join(tools, "callback"), '#!/bin/bash\n[[ "${TEST_PORTAL_FAIL:-}" != 1 ]]\n', {mode:0o755});
   const preload = join(dir, "mock.js");
   writeFileSync(preload, `globalThis.fetch = async (url, options) => {
     if (url !== "https://core.aquavoice.com/users/profile/") throw new Error("Unexpected endpoint");
@@ -25,7 +27,7 @@ esac
     const status = Number(process.env.TEST_PROFILE_STATUS || 200);
     return Response.json(process.env.TEST_BAD_PROFILE ? {} : {email:"test@example.invalid",name:"Test",plan_type:"pro"}, {status});
   };`);
-  const env = { ...process.env, HOME: dir, TEST_DIR: dir, AQUA_VOICE_TOKEN: "", AQUA_SETTINGS_PATH: settings, AQUA_ACCOUNT_PATH: join(dir, "account.json"), AQUA_HISTORY_PATH: join(dir, "history.json"), PATH: tools + ":" + process.env.PATH };
+  const env = { ...process.env, HOME: dir, TEST_DIR: dir, AQUA_CALLBACK_BIN: join(tools,"callback"), AQUA_VOICE_TOKEN: "", AQUA_SETTINGS_PATH: settings, AQUA_ACCOUNT_PATH: join(dir, "account.json"), AQUA_HISTORY_PATH: join(dir, "history.json"), PATH: tools + ":" + process.env.PATH };
   const command = (args, overrides = {}, input) => Bun.spawnSync([process.execPath, "--preload", preload, resolve("bin/aqua-auth.js"), ...args], { env: { ...env, ...overrides }, stdin: input === undefined ? "ignore" : Buffer.from(input) });
   try { run({dir,settings,command}); } finally { rmSync(dir, { recursive:true,force:true }); }
 }
@@ -69,4 +71,23 @@ test("sign-out does not claim success when keyring removal fails", () => fixture
   expect(command(["logout"]).exitCode).toBe(0);
   expect(existsSync(join(dir,"keyring"))).toBe(false);
   expect(JSON.parse(readFileSync(settings,"utf8")).token).toBe("");
+}));
+
+test("an unresponsive keyring lookup returns instead of freezing dictation", () => fixture(({dir}) => {
+  writeFileSync(join(dir,"bin/secret-tool"), '#!/bin/bash\nexec sleep 10\n', {mode:0o755});
+  const start=Date.now();
+  const result=Bun.spawnSync([process.execPath,"--eval",`import {readKeyringToken} from ${JSON.stringify(resolve("bin/aqua-settings.js"))}; console.log(JSON.stringify({available:Boolean(readKeyringToken())}));`], {
+    env:{...process.env,PATH:join(dir,"bin")+":"+process.env.PATH},timeout:4000,
+  });
+  expect(result.exitCode).toBe(0);
+  expect(JSON.parse(result.stdout.toString()).available).toBe(false);
+  expect(Date.now()-start).toBeLessThan(4000);
+}));
+
+
+test("login refuses an unavailable portal or another app's handler before opening the browser", () => fixture(({dir,command}) => {
+  expect(command(["login"],{TEST_PORTAL_FAIL:"1"}).exitCode).toBe(1);
+  expect(existsSync(join(dir,"opened-url"))).toBe(false);
+  expect(command(["login"],{TEST_LOGIN_HANDLER:"other.desktop"}).exitCode).toBe(1);
+  expect(existsSync(join(dir,"opened-url"))).toBe(false);
 }));

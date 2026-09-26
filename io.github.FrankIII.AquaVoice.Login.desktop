@@ -1,8 +1,8 @@
 [Desktop Entry]
 Type=Application
 Name=Aqua Voice Login Callback
-Comment=Store Aqua Voice login securely for the Omarchy plugin
-Exec=aqua-voice-control auth callback %u
+Comment=Receive Aqua Voice login securely through D-Bus
+DBusActivatable=true
 NoDisplay=true
 Terminal=false
 MimeType=x-scheme-handler/aquavoice;

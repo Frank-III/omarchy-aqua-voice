@@ -13,13 +13,16 @@ test("handler replacement requires opt-in and restoration preserves a later user
     expect(run("claim").exitCode).toBe(0);
     expect(readFileSync(current,"utf8")).toBe("other.desktop\n");
     expect(run("claim","--replace").exitCode).toBe(0);
-    expect(readFileSync(current,"utf8")).toBe("aqua-voice-callback.desktop\n");
+    expect(readFileSync(current,"utf8")).toBe("io.github.FrankIII.AquaVoice.Login.desktop\n");
     expect(run("claim","--replace").exitCode).toBe(0);
     expect(run("restore").exitCode).toBe(0);
     expect(readFileSync(current,"utf8")).toBe("other.desktop\n");
     run("claim","--replace");writeFileSync(current,"new-choice.desktop\n");
     run("restore");
     expect(readFileSync(current,"utf8")).toBe("new-choice.desktop\n");
+    writeFileSync(current,"aqua-voice-callback.desktop\n");
+    expect(run("claim").exitCode).toBe(0);
+    expect(readFileSync(current,"utf8")).toBe("io.github.FrankIII.AquaVoice.Login.desktop\n");
   } finally {rmSync(home,{recursive:true,force:true});}
 });
 

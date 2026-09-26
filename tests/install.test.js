@@ -31,6 +31,10 @@ test("clean staged installation works without Bun on the desktop PATH", () => {
     expect(start.metadata.client).toBe("linux");
     expect(start.transcription_model).toBe("avalon-v1.1");
     expect(existsSync(join(home, ".local/lib/aqua-voice/aqua-hotkey-capture"))).toBe(true);
+    expect(existsSync(join(home, ".local/lib/aqua-voice/aqua-voice-callback"))).toBe(true);
+    expect(readFileSync(join(home, ".local/share/applications/io.github.FrankIII.AquaVoice.Login.desktop"), "utf8")).toContain("DBusActivatable=true");
+    expect(readFileSync(join(home, ".local/share/dbus-1/services/io.github.FrankIII.AquaVoice.Login.service"), "utf8")).not.toMatch(/%[uUfF]/);
+
     expect(readFileSync(join(home, ".config/systemd/user/aqua-voice.service"), "utf8")).toContain("aqua-voice/runtime");
     expect(existsSync(join(home, ".config/hypr/bindings.lua"))).toBe(false);
     const incomplete = Bun.spawnSync([control, "status"], {env:desktopEnv});

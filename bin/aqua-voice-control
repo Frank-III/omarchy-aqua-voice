@@ -14,7 +14,7 @@ if [[ "${1:-status}" == "status" ]]; then
       conflict=false
       if command -v xdg-mime >/dev/null; then
         handler=$(xdg-mime query default x-scheme-handler/aquavoice 2>/dev/null || true)
-        if [[ -n "$handler" && "$handler" != aqua-voice-callback.desktop ]]; then conflict=true; fi
+        if [[ -n "$handler" && "$handler" != io.github.FrankIII.AquaVoice.Login.desktop && "$handler" != aqua-voice-callback.desktop ]]; then conflict=true; fi
       fi
       printf '{"ok":true,"phase":"offline","setupRequired":true,"loginHandlerConflict":%s,"recording":false,"processing":false,"error":"Set up Aqua Voice to install its backend."}\n' "$conflict"
       exit 0
@@ -68,7 +68,8 @@ case "${1:-status}" in
   auth)
     action="${2:-status}"
     if [[ "$action" == "callback" ]]; then
-      printf '%s' "${3:?callback URL}" | run_js "$AUTH" callback-stdin
+      echo "Callback arguments are no longer accepted. Use the D-Bus login handler." >&2
+      exit 2
     else
       run_js "$AUTH" "$action"
     fi

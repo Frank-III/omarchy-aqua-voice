@@ -14,7 +14,7 @@ import {
 import { finalizationTimeout, recoverRecording, reportRecoveryOutcome } from "./aqua-recovery.js";
 import { hotkeyMatches, readHotkeyConfig, readKbOptions } from "./aqua-hotkey.js";
 
-const VERSION = "1.0.2";
+const VERSION = "1.0.3";
 const DOUBLE_TAP_MS = 650;
 const PHYSICAL_DEBOUNCE_MS = 80;
 const MIN_CAPTURE_MS = 100;
@@ -498,7 +498,6 @@ function startPayload(config, target) {
     transcription_model: config.transcriptionModel || "avalon-v1.1",
     fast_llm_model: config.fastLLMModel || undefined,
     prompt_set: config.promptSet || undefined,
-    streaming_model: config.streamingModel || undefined,
     privacy_mode: Boolean(config.privacyMode),
     memory: Boolean(config.memory),
     skip_llm: Boolean(config.skipLlm),
@@ -515,9 +514,15 @@ function startPayload(config, target) {
   };
 }
 
+function createRealtimeSocket(token, Socket = WebSocket) {
+  return new Socket("wss://realtime.aquavoice.com", {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
 function openWebsocket(config, target) {
   const generation = ++socketGeneration;
-  const socket = new WebSocket(`wss://realtime.aquavoice.com?token=${encodeURIComponent(config.token)}`);
+  const socket = createRealtimeSocket(config.token);
   websocket = socket;
   const context = sessionContext;
   delivery = createDelivery(socket, (transport, message) => {
@@ -555,7 +560,7 @@ function start() {
   if (state.phase === "recording" || state.phase === "processing") return;
   const config = settings();
   config.token = readAquaToken(config, true);
-  if (!config.token) throw new Error("Aqua login token is missing");
+  if (!config.token) throw new Error("Unlock your login keyring or sign in through Aqua Voice → Account");
   state.phase = "recording";
   state.stage = "connecting";
   state.recordingStarted = Date.now();
@@ -792,7 +797,7 @@ async function runClient(command) {
   if (!JSON.parse(response).ok) process.exitCode = 1;
 }
 
-export { createDelivery, finishSocket, audioFrame, displayText, focusIsStable, gestureDecision, isTerminalClass, isTrackedHotkeyCode, pasteCommand, pasteShortcut, startPayload };
+export { createRealtimeSocket, createDelivery, finishSocket, audioFrame, displayText, focusIsStable, gestureDecision, isTerminalClass, isTrackedHotkeyCode, pasteCommand, pasteShortcut, startPayload };
 
 if (import.meta.main) {
   const command = process.argv[2];

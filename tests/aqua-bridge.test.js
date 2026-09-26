@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { createDelivery, finishSocket, audioFrame, displayText, focusIsStable, gestureDecision, isTerminalClass, isTrackedHotkeyCode, pasteCommand, pasteShortcut, startPayload } from "../bin/aqua-bridge.js";
+import { createRealtimeSocket, createDelivery, finishSocket, audioFrame, displayText, focusIsStable, gestureDecision, isTerminalClass, isTrackedHotkeyCode, pasteCommand, pasteShortcut, startPayload } from "../bin/aqua-bridge.js";
 import { customizationRequest, normalizeTranscriptCustomizations, publicSettings, shouldApplyCustomizationRevision } from "../bin/aqua-settings.js";
 import { parseCallbackUrl, signInUrl } from "../bin/aqua-auth.js";
 import { defaultHotkeyConfig, hotkeyMatches, normalizeModifiers, replaceManagedBinding } from "../bin/aqua-hotkey.js";
@@ -278,4 +278,21 @@ describe("account personalization", () => {
     expect(visible.supportedLanguages.some((language) => language.value === "ja")).toBe(true);
     expect(visible.token).toBeUndefined();
   });
+});
+
+
+test("retired streaming-model overrides are not sent to Aqua 0.20", () => {
+  const payload = startPayload({ streamingModel: "obsolete", transcriptionModel: "avalon-v1.1" }, null);
+  expect(payload).not.toHaveProperty("streaming_model");
+  expect(payload.transcription_model).toBe("avalon-v1.1");
+});
+
+
+test("realtime credentials go only in the Authorization header", () => {
+  let args;
+  createRealtimeSocket("private-test-token", class { constructor(...input) { args = input; } });
+  expect(args[0]).toBe("wss://realtime.aquavoice.com");
+  expect(new URL(args[0]).search).toBe("");
+  expect(args[0]).not.toContain("private-test-token");
+  expect(args[1]).toEqual({headers:{Authorization:"Bearer private-test-token"}});
 });

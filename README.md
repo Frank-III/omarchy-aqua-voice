@@ -17,7 +17,7 @@ Voice dictation with a native Omarchy panel, a floating recording overlay, and a
 
 Requires Omarchy with Lua Hyprland bindings, PipeWire, and a working Secret Service keyring.
 
-Install Bun with `mise use -g bun`. Required Arch packages: `base-devel`, `jq`, `wl-clipboard`, `wtype`, `pipewire-audio`, `libsecret`, and `xdg-utils`.
+Install Bun with `mise use -g bun`. Required Arch packages: `base-devel`, `glib2-devel`, `pkgconf`, `jq`, `wl-clipboard`, `wtype`, `pipewire-audio`, `libsecret`, and `xdg-utils`.
 
 Copy the command below and paste it into your terminal. Once listed on the [Omarchy marketplace](https://plugins.omarchy.org/), you can also use **Copy install command** on the Aqua Voice card.
 
@@ -42,7 +42,7 @@ Global shortcuts require read access to keyboard devices in `/dev/input/`. The `
 
 Preferences live in `~/.config/aqua-voice/settings.json`; previous `~/.config/Aqua Voice/settings.json` files are never changed by the default client.
 
-Audio goes to Aqua for transcription and is not saved locally. Login uses the keyring. **Privacy Mode** stops new local history entries.
+Audio goes to Aqua for transcription and is not saved locally. Login uses the keyring. Browser callbacks use D-Bus and stdin rather than process arguments; realtime authentication uses an Authorization header, not a URL token. Browser callbacks require direct desktop-portal/D-Bus support (current Chromium-based browsers). Setup refreshes activation and migrates this plugin’s old portal entry. Generic xdg-open callback launching is not supported. **Privacy Mode** stops new local history entries.
 
 ## Update
 

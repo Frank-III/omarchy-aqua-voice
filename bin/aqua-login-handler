@@ -1,12 +1,13 @@
 #!/bin/bash
 set -euo pipefail
-own=aqua-voice-callback.desktop
+own=io.github.FrankIII.AquaVoice.Login.desktop
+legacy=aqua-voice-callback.desktop
 scheme=x-scheme-handler/aquavoice
 saved="$HOME/.local/state/aqua-voice/previous-login-handler"
 current=$(xdg-mime query default "$scheme")
 case "${1:-claim}" in
   claim)
-    if [[ -n "$current" && "$current" != "$own" ]]; then
+    if [[ -n "$current" && "$current" != "$own" && "$current" != "$legacy" ]]; then
       if [[ "${2:-}" != "--replace" ]]; then
         echo "Existing Aqua login handler preserved. Browser sign-in remains assigned to that application."
         exit 0
@@ -17,11 +18,17 @@ case "${1:-claim}" in
       fi
     fi
     xdg-mime default "$own" "$scheme"
+    callback="$HOME/.local/lib/aqua-voice/aqua-voice-callback"
+    if [[ -x "$callback" ]]; then
+      "$callback" --refresh-registration || { echo "Could not refresh Aqua's desktop login registration. Run setup again." >&2; exit 1; }
+    fi
     ;;
   restore)
     if [[ "$current" == "$own" && -s "$saved" ]]; then
       IFS= read -r previous < "$saved"
       xdg-mime default "$previous" "$scheme"
+      callback="$HOME/.local/lib/aqua-voice/aqua-voice-callback"
+      if [[ -x "$callback" ]]; then "$callback" --restore-portal "${previous%.desktop}"; fi
       rm -- "$saved"
       echo "Previous Aqua login handler restored."
     else

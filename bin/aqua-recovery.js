@@ -1,7 +1,7 @@
 const realtime = "https://realtime.aquavoice.com";
 
 export function finalizationTimeout(audioMs) {
-  return 15000 + Math.ceil(Math.max(0, audioMs) / 60);
+  return 15000 + 1000 * Math.floor(Math.max(0, audioMs) / 60000);
 }
 
 export function pcmWav(pcm) {

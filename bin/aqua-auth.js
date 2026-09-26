@@ -103,6 +103,13 @@ if (import.meta.main) {
       console.log(JSON.stringify(safeStatus()));
     }
     else if (command === "login") {
+      const handler = Bun.spawnSync(["xdg-mime", "query", "default", "x-scheme-handler/aquavoice"], { timeout: 3000 });
+      if (!handler.success || handler.stdout.toString().trim() !== "io.github.FrankIII.AquaVoice.Login.desktop") {
+        throw new Error("Aqua login links are not assigned to this client. Run setup with --replace-login-handler to switch them explicitly.");
+      }
+      const callback = process.env.AQUA_CALLBACK_BIN || `${import.meta.dir}/aqua-voice-callback`;
+      const prepared = Bun.spawnSync([callback, "--prepare-login"], { timeout: 20000 });
+      if (!prepared.success) throw new Error("Secure desktop login is unavailable. Check xdg-desktop-portal and run Aqua setup again.");
       const child = Bun.spawn(["xdg-open", signInUrl], { stdin: "ignore", stdout: "ignore", stderr: "ignore" });
       if ((await child.exited) !== 0) throw new Error("Could not open the browser. Open https://aquavoice.com/sign-in?origin=desktop to sign in.");
       console.log(JSON.stringify({ ok: true, opened: true }));
