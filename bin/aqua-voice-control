@@ -33,8 +33,8 @@ offline_status() {
   snapshot=$(run_js "$SETTINGS" status)
   auth=$(run_js "$AUTH" status)
   hotkey=$(run_js "$HOTKEY" status)
-  jq -cn --argjson snapshot "$snapshot" --argjson auth "$auth" --argjson hotkey "$hotkey" \
-    '{ok:false,phase:"offline",recording:false,processing:false,hotkeyReady:false,hotkeyTaps:0,hotkeyDisplay:$hotkey.hotkey.display,microphone:"PipeWire default",pasteWithShift:false,tokenPresent:$auth.connected,account:$auth.account,latestTranscript:"",error:"Backend is not running",settings:$snapshot.settings,history:$snapshot.history}'
+  printf '%s\n' "$snapshot" "$auth" "$hotkey" | jq -cs \
+    '.[0] as $snapshot | .[1] as $auth | .[2] as $hotkey | {ok:false,phase:"offline",recording:false,processing:false,hotkeyReady:false,hotkeyTaps:0,hotkeyDisplay:$hotkey.hotkey.display,microphone:"PipeWire default",pasteWithShift:false,tokenPresent:$auth.connected,account:$auth.account,latestTranscript:"",error:"Backend is not running",settings:$snapshot.settings,history:$snapshot.history}'
 }
 
 case "${1:-status}" in

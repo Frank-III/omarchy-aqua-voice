@@ -13,16 +13,18 @@ Voice dictation with a native Omarchy panel, a floating recording overlay, and a
 
 </details>
 
-## Install
+## Install directly from Git
+
+**No marketplace listing is required.** Omarchy can install this plugin straight from its GitHub repository.
 
 Requires Omarchy with Lua Hyprland bindings, PipeWire, and a working Secret Service keyring.
 
 Install Bun with `mise use -g bun`. Required Arch packages: `base-devel`, `glib2-devel`, `pkgconf`, `jq`, `wl-clipboard`, `wtype`, `pipewire-audio`, `libsecret`, and `xdg-utils`.
 
-Copy the command below and paste it into your terminal. Once listed on the [Omarchy marketplace](https://plugins.omarchy.org/), you can also use **Copy install command** on the Aqua Voice card.
+Run:
 
 ```bash
-omarchy plugin add https://github.com/Frank-III/omarchy-aqua-voice --enable
+omarchy plugin add https://github.com/Frank-III/omarchy-aqua-voice.git --enable
 ```
 
 Click the Aqua bar icon, review the setup summary, then **Install and enable**. If another app handles Aqua login links, an unchecked option lets you switch them to this client. Missing dependencies appear in the panel.

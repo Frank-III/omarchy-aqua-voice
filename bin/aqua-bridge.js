@@ -16,7 +16,7 @@ import { connectionGate } from "./aqua-connection.js";
 import { recorderCommand, listMicrophones } from "./aqua-audio.js";
 import { hotkeyMatches, readHotkeyConfig, readKbOptions } from "./aqua-hotkey.js";
 
-const VERSION = "1.0.4";
+const VERSION = "1.0.5";
 const DOUBLE_TAP_MS = 650;
 const PHYSICAL_DEBOUNCE_MS = 80;
 const MIN_CAPTURE_MS = 100;
