@@ -51,3 +51,7 @@ Source: `/home/frankmi/aqua-voice-linux/asar-extracted/.webpack/main/index.js` a
 ## Design reference
 
 The control center follows the installed `io.github.lijiawei0305-pixel.mihomo` plugin: a fixed-size panel, persistent left navigation rail, one scrollable page on the right, native Omarchy controls, stable geometry across page changes, and numeric keyboard shortcuts.
+
+## 0.20.16 UI alignment
+
+The Omarchy interface keeps its native layout and the user's preferred decorative recording animation. Retired Continual Learning controls are absent; microphone selection uses real PipeWire inputs and refreshes when Settings opens. Connecting, transcribing, recovering, and buffered recording have distinct user-facing labels. Backend readiness is not labeled as Internet connectivity. Native macOS Liquid Glass, pets, and desktop-only features are not copied into unsupported controls.

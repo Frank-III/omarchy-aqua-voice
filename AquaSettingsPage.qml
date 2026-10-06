@@ -59,7 +59,7 @@ Item {
           label: "Microphone"
           value: root.svc ? root.svc.microphoneTarget : ""
           options: {
-            var devices = root.svc ? root.svc.microphones.slice() : []
+            var devices = root.svc && root.svc.microphones.length ? root.svc.microphones.slice() : [{value: "", label: "System default"}]
             if (root.svc && root.svc.microphoneTarget && !devices.some(function(d) { return d.value === root.svc.microphoneTarget }))
               devices.push({value: root.svc.microphoneTarget, label: "Selected microphone unavailable"})
             return devices
@@ -132,7 +132,7 @@ Item {
       Toggle {
         width: parent.width
         label: "Privacy Mode"
-        description: "Do not retain new transcripts or learn from them."
+        description: "Keep new transcripts out of local history and use Aqua’s privacy mode."
         foreground: root.foreground
         accent: Color.accent
         fontFamily: root.fontFamily

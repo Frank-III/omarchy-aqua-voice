@@ -53,7 +53,7 @@ Item {
         AquaInfoRow { width: parent.width; label: "Backend"; value: root.online ? "Running" : "Stopped"; valueColor: root.online ? Color.accent : Color.urgent; foreground: root.foreground; fontFamily: root.fontFamily; valueBold: true }
         AquaInfoRow { width: parent.width; label: "Aqua account"; value: root.svc && root.svc.tokenPresent ? "Token available" : "Sign-in needed"; valueColor: root.svc && root.svc.tokenPresent ? Color.accent : Color.urgent; foreground: root.foreground; fontFamily: root.fontFamily }
         AquaInfoRow { width: parent.width; label: "Physical hotkey"; value: root.svc && root.svc.hotkeyReady ? "Ready" : (root.online ? "Unavailable" : "Backend stopped"); foreground: root.foreground; fontFamily: root.fontFamily }
-        AquaInfoRow { width: parent.width; label: "WebSocket"; value: root.svc && root.svc.websocketConnected ? (root.svc.recording ? "Connected · recording" : "Connected · finalizing") : "Disconnected"; foreground: root.foreground; fontFamily: root.fontFamily }
+        AquaInfoRow { width: parent.width; label: "WebSocket"; value: root.svc && root.svc.stage === "recovering" ? "Recovering transcript" : root.svc && root.svc.websocketConnected ? (root.svc.stage === "waiting-ready" ? "Connected · preparing" : root.svc.recording ? "Connected · recording" : "Connected · finalizing") : root.svc && (root.svc.recording || root.svc.processing) ? "Not connected" : "On demand"; foreground: root.foreground; fontFamily: root.fontFamily }
       }
 
       AquaCard {

@@ -35,6 +35,8 @@ Panel {
     if (!online) return "Backend stopped"
     if (phase === "armed") return "Tap again"
     if (recording) return "Listening"
+    if (processing && svc && svc.stage === "recovering") return "Recovering dictation"
+    if (processing && svc && svc.stage === "waiting-ready") return "Connecting to Aqua"
     if (processing) return "Transcribing · " + Math.floor((svc ? svc.processingMs : 0) / 1000) + "s"
     if (complete) return svc && svc.completion ? svc.completion : "Complete"
     if (phase === "error") return "Needs attention"
@@ -46,8 +48,11 @@ Panel {
     if (!online) return "Start Aqua to enable realtime dictation"
     if (phase === "armed") return "Second tap starts hands-free dictation"
     if (recording && svc && svc.stage === "recording-for-recovery") return "Connection unavailable · audio will upload when you finish"
+    if (recording && svc && (svc.stage === "connecting" || svc.stage === "waiting-ready")) return "Microphone is recording · connecting to Aqua"
     if (recording) return svc && svc.liveText ? svc.liveText : "Tap once when you are done"
-    if (processing) return svc && svc.stage ? String(svc.stage).replace(/-/g, " ") : "Waiting for Aqua"
+    if (processing && svc && svc.stage === "recovering") return "Retrieving your transcript · you can still cancel"
+    if (processing && svc && svc.stage === "waiting-ready") return "Waiting for the connection before sending the remaining audio"
+    if (processing) return "Finishing your transcript"
     if (complete) return svc && svc.completion !== "No text returned" && svc.completion !== "Too short" ? svc.latestTranscript : ""
     if (phase === "error") return svc ? svc.lastError : "Unknown error"
     if (!svc || !svc.tokenPresent) return "Open Account to sign in to Aqua Voice"
@@ -120,6 +125,20 @@ Panel {
     }
   }
   Timer { id: refreshDelay; interval: 120; onTriggered: if (root.svc) root.svc.refresh() }
+
+  function refreshMicrophoneList() {
+    if (root.opened && root.page === "settings" && root.online && !microphoneProbe.running)
+      microphoneProbe.running = true
+  }
+  onOpenedChanged: refreshMicrophoneList()
+  onPageChanged: refreshMicrophoneList()
+  Process {
+    id: microphoneProbe
+    command: [root.control, "trigger", "microphones"]
+    stdout: StdioCollector {}
+    stderr: StdioCollector {}
+    onExited: if (root.svc) refreshDelay.restart()
+  }
 
   // Only the open Dictionary page probes the account revision; this is not
   // part of the one-second local status refresh.
@@ -263,7 +282,7 @@ Panel {
               anchors.verticalCenter: parent.verticalCenter
               spacing: Style.space(1)
               Text { width: parent.width; text: "AQUA"; color: root.fg; font.family: root.fontFamily; font.pixelSize: Style.font.bodySmall; font.bold: true; font.letterSpacing: 1.1; elide: Text.ElideRight }
-              Text { width: parent.width; text: root.online ? "ONLINE" : "OFFLINE"; color: Util.alpha(root.fg, 0.45); font.family: root.fontFamily; font.pixelSize: Style.font.caption }
+              Text { width: parent.width; text: !root.online ? "STOPPED" : root.recording ? "RECORDING" : root.processing ? "PROCESSING" : root.svc && root.svc.tokenPresent ? "READY" : "SIGN IN"; color: Util.alpha(root.fg, 0.45); font.family: root.fontFamily; font.pixelSize: Style.font.caption }
             }
           }
           NavButton { width: parent.width; pageId: "dictate"; glyph: "󰍬"; title: "Dictate" }

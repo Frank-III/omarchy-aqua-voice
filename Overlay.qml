@@ -76,10 +76,11 @@ Item {
 
         Text {
           anchors.verticalCenter: parent.verticalCenter
-          text: root.recording ? "Recording"
+          text: root.recording ? (service.stage === "recording-for-recovery" ? "Recording · buffered" : "Recording")
             : (service && service.phase === "complete" ? service.completion
               : (service && service.phase === "error" ? "Dictation failed"
-                : (service && String(service.stage).indexOf("retry") >= 0 ? "Retrying Aqua…"
+                : (service && service.stage === "recovering" ? "Recovering…"
+                  : service && service.stage === "waiting-ready" ? "Connecting…"
                   : "Transcribing · " + Math.floor((service ? service.processingMs : 0) / 1000) + "s")))
           color: service && service.phase === "error" ? Color.urgent : Color.popups.text
           font.family: Style.font.family

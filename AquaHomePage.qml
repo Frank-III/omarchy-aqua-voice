@@ -126,7 +126,7 @@ Item {
           spacing: Style.space(8)
           Button {
             width: root.recording || root.processing ? (parent.width - parent.spacing) * 0.68 : parent.width
-            text: root.svc && root.svc.setupRequired ? "Install and enable" : !root.online ? "Start backend" : (root.recording ? "Finish dictation" : "Start dictation")
+            text: root.svc && root.svc.setupRequired ? "Install and enable" : !root.online ? "Start backend" : root.processing ? (root.svc.stage === "recovering" ? "Recovering…" : root.svc.stage === "waiting-ready" ? "Connecting…" : "Transcribing…") : (root.recording ? "Finish dictation" : "Start dictation")
             enabled: !root.processing && (!root.online || root.recording || (root.svc && root.svc.tokenPresent))
             onClicked: {
               if (root.svc && root.svc.setupRequired) {
