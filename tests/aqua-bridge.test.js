@@ -296,3 +296,16 @@ test("realtime credentials go only in the Authorization header", () => {
   expect(args[0]).not.toContain("private-test-token");
   expect(args[1]).toEqual({headers:{Authorization:"Bearer private-test-token"}});
 });
+
+
+test("Aqua 0.20.16 retired preferences are ignored without changing saved input", () => {
+  const config = { memory: true, promptSet: "old-prompt", streamingModel: "old-model", privacyMode: true };
+  const before = JSON.stringify(config);
+  const payload = startPayload(config, null);
+  expect(payload).not.toHaveProperty("memory");
+  expect(payload).not.toHaveProperty("prompt_set");
+  expect(payload).not.toHaveProperty("streaming_model");
+  expect(payload.privacy_mode).toBe(true);
+  expect(publicSettings(config)).not.toHaveProperty("memory");
+  expect(JSON.stringify(config)).toBe(before);
+});

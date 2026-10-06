@@ -174,7 +174,7 @@ Item {
         foreground: root.foreground
         PanelSectionHeader { text: "Workflow"; foreground: root.foreground; fontFamily: root.fontFamily }
         AquaInfoRow { width: parent.width; label: "Activation"; value: "Double-tap " + (root.svc ? root.svc.hotkeyDisplay : "Shift+Super+F23"); foreground: root.foreground; fontFamily: root.fontFamily }
-        AquaInfoRow { width: parent.width; label: "Microphone"; value: "PipeWire default"; foreground: root.foreground; fontFamily: root.fontFamily }
+        AquaInfoRow { width: parent.width; label: "Microphone"; value: root.svc ? root.svc.microphone : "System default"; foreground: root.foreground; fontFamily: root.fontFamily }
         AquaInfoRow { width: parent.width; label: "Paste"; value: "Focused Hyprland window"; foreground: root.foreground; fontFamily: root.fontFamily }
         AquaInfoRow { width: parent.width; label: "Overlay"; value: "Compact, click-through"; foreground: root.foreground; fontFamily: root.fontFamily }
       }

@@ -45,7 +45,7 @@ command -v pkg-config >/dev/null || { echo "Install pkgconf for the secure login
 pkg-config --exists gio-2.0 || { echo "Install GLib development headers (glib2-devel) for secure login" >&2; exit 1; }
 if ! "$STAGE_ONLY"; then
 [[ -f "$HOME/.config/hypr/bindings.lua" ]] || { echo "This plugin requires Omarchy with Lua Hyprland bindings (~/.config/hypr/bindings.lua)." >&2; exit 1; }
-for helper in jq wl-copy wtype pw-record hyprctl omarchy-shell systemctl; do
+for helper in jq wl-copy wtype pw-record pw-dump hyprctl omarchy-shell systemctl; do
   command -v "$helper" >/dev/null || { echo "$helper is required" >&2; exit 1; }
 done
 for helper in secret-tool xdg-icon-resource xdg-mime xdg-open; do
@@ -56,6 +56,8 @@ mkdir -p "$PREFIX" "$BIN_DIR" "$UNIT_DIR" "$APPLICATION_DIR" "$DBUS_DIR"
 printf '#!/bin/bash\nexec %q "$@"\n' "$BUN_EXECUTABLE" > "$PREFIX/runtime"
 chmod 0755 "$PREFIX/runtime"
 install -m 0755 "$ROOT/bin/aqua-bridge.js" "$PREFIX/aqua-bridge"
+install -m 0644 "$ROOT/bin/aqua-audio.js" "$PREFIX/aqua-audio.js"
+install -m 0644 "$ROOT/bin/aqua-connection.js" "$PREFIX/aqua-connection.js"
 install -m 0644 "$ROOT/bin/aqua-recovery.js" "$PREFIX/aqua-recovery.js"
 install -m 0755 "$ROOT/bin/aqua-settings.js" "$PREFIX/aqua-settings.js"
 install -m 0755 "$ROOT/bin/aqua-auth.js" "$PREFIX/aqua-auth.js"

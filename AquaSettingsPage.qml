@@ -10,7 +10,7 @@ Item {
   property string fontFamily: Style.font.family
   property bool actionBusy: false
   property bool hotkeyCaptureRequested: false
-  readonly property bool editing: languagePicker.popupOpen
+  readonly property bool editing: languagePicker.popupOpen || microphonePicker.popupOpen
   signal actionRequested(var args)
 
   onActionBusyChanged: if (!actionBusy) hotkeyCaptureRequested = false
@@ -49,6 +49,36 @@ Item {
       id: column
       width: scrollArea.availableWidth
       spacing: Style.space(12)
+
+      AquaCard {
+        width: parent.width
+        foreground: root.foreground
+        SearchableDropdown {
+          id: microphonePicker
+          width: parent.width
+          label: "Microphone"
+          value: root.svc ? root.svc.microphoneTarget : ""
+          options: {
+            var devices = root.svc ? root.svc.microphones.slice() : []
+            if (root.svc && root.svc.microphoneTarget && !devices.some(function(d) { return d.value === root.svc.microphoneTarget }))
+              devices.push({value: root.svc.microphoneTarget, label: "Selected microphone unavailable"})
+            return devices
+          }
+          enabled: root.svc && !root.svc.recording && !root.svc.processing
+          foreground: root.foreground
+          fontFamily: root.fontFamily
+          onChanged: function(value) { root.actionRequested(["settings", "set", "microphoneTarget", value]) }
+        }
+        Button { text: "Refresh microphones"; enabled: root.svc && root.svc.phase !== "offline"; onClicked: root.actionRequested(["trigger", "microphones"]) }
+        Text {
+          width: parent.width
+          text: root.svc && root.svc.microphoneError ? root.svc.microphoneError : "System default follows your desktop input. A selected microphone applies only to Aqua."
+          color: root.svc && root.svc.microphoneError ? Color.urgent : Util.alpha(root.foreground, 0.5)
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.caption
+          wrapMode: Text.Wrap
+        }
+      }
 
       AquaCard {
         width: parent.width
@@ -108,16 +138,6 @@ Item {
         fontFamily: root.fontFamily
         checked: root.svc && root.svc.privacyMode
         onClicked: root.toggle("privacyMode")
-      }
-      Toggle {
-        width: parent.width
-        label: "Continual Learning"
-        description: "Let Aqua learn preferences from feedback. Disables Privacy Mode."
-        foreground: root.foreground
-        accent: Color.accent
-        fontFamily: root.fontFamily
-        checked: root.svc && root.svc.memory
-        onClicked: root.toggle("memory")
       }
       Toggle {
         width: parent.width

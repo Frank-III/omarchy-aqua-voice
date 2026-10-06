@@ -12,9 +12,11 @@ import {
   refreshTranscriptCustomizations,
 } from "./aqua-settings.js";
 import { finalizationTimeout, recoverRecording, reportRecoveryOutcome } from "./aqua-recovery.js";
+import { connectionGate } from "./aqua-connection.js";
+import { recorderCommand, listMicrophones } from "./aqua-audio.js";
 import { hotkeyMatches, readHotkeyConfig, readKbOptions } from "./aqua-hotkey.js";
 
-const VERSION = "1.0.3";
+const VERSION = "1.0.4";
 const DOUBLE_TAP_MS = 650;
 const PHYSICAL_DEBOUNCE_MS = 80;
 const MIN_CAPTURE_MS = 100;
@@ -46,6 +48,8 @@ const state = {
   latestTranscript: initialHistory[0]?.text || "",
   liveText: "",
   error: "",
+  microphones: [{ value: "", label: "System default" }],
+  microphoneError: "",
   hotkeyReady: false,
   hotkeyTaps: 0,
   lastTap: 0,
@@ -114,7 +118,9 @@ function status(ok = true) {
     hotkeyReady: state.hotkeyReady,
     hotkeyTaps: state.hotkeyTaps,
     hotkeyDisplay: hotkeyConfig.display,
-    microphone: "PipeWire → Aqua realtime",
+    microphone: state.microphones.find((device) => device.value === (settings().microphoneTarget || ""))?.label || "Selected microphone unavailable",
+    microphones: state.microphones,
+    microphoneError: state.microphoneError,
     pasteWithShift: state.targetTerminal,
     tokenPresent: Boolean(readAquaToken(settings())),
     account: readAccountMetadata(),
@@ -386,7 +392,11 @@ function handleServerMessage(event) {
   let message;
   try { message = JSON.parse(event.data); } catch { return; }
   if (message.type === "ready") {
+    if (sessionContext.transportFailed) return;
     websocketReady = true;
+    sessionContext.connection.accept();
+    trace("connection-ready", { elapsedMs: Date.now() - sessionContext.startedAt });
+    state.stage = state.phase === "recording" ? "streaming" : "finalizing";
     flushAudio();
   } else if (message.type === "set_session_id") {
     if ((typeof message.session_id === "number" && Number.isSafeInteger(message.session_id))
@@ -457,19 +467,28 @@ function fail(message, recover = true) {
 }
 
 function startRecorder() {
-  recorder = Bun.spawn(["pw-record", "--raw", "--rate", "16000", "--channels", "1", "--format", "s16", "-"], {
+  recorder = Bun.spawn(recorderCommand(sessionConfig.microphoneTarget), {
     stdin: "ignore",
     stdout: "pipe",
     stderr: "pipe",
   });
   const generation = socketGeneration;
   const capture = recorder;
+  let heardAudio = false;
+  const audioTimer = setTimeout(() => {
+    if (!heardAudio && recorder === capture && state.phase === "recording") fail("Microphone produced no audio. Check the selected input in Settings.", false);
+  }, 5000);
   recorderDrain = (async () => {
     const reader = capture.stdout.getReader();
     try {
       while (true) {
         const { done, value } = await reader.read();
         if (done || generation !== socketGeneration) break;
+        if (!heardAudio) {
+          heardAudio = true;
+          clearTimeout(audioTimer);
+          trace("audio-first-chunk", { elapsedMs: Date.now() - sessionContext.startedAt });
+        }
         const chunk = Buffer.from(value);
         sessionAudioChunks.push(chunk);
         sessionAudioBytes += chunk.length;
@@ -481,7 +500,10 @@ function startRecorder() {
         }
       }
     } catch (error) {
-      if (state.phase === "recording") fail(`microphone failed: ${error.message}`);
+      if (state.phase === "recording") fail(`microphone failed: ${error.message}`, false);
+    } finally {
+      clearTimeout(audioTimer);
+      if (generation === socketGeneration && state.phase === "recording" && recorder === capture) fail("Microphone capture stopped unexpectedly. Check your input device.", false);
     }
   })();
 }
@@ -492,14 +514,12 @@ function startPayload(config, target) {
     language_code: config.language || "en",
     sample_rate: 16000,
     channel_count: 1,
-    microphone: "PipeWire default",
+    microphone: config.microphoneTarget || "PipeWire default",
     context: { app: target?.class || "" },
     is_trial: false,
     transcription_model: config.transcriptionModel || "avalon-v1.1",
     fast_llm_model: config.fastLLMModel || undefined,
-    prompt_set: config.promptSet || undefined,
     privacy_mode: Boolean(config.privacyMode),
-    memory: Boolean(config.memory),
     skip_llm: Boolean(config.skipLlm),
     casual_messaging: Boolean(config.casualMessaging),
     metadata: {
@@ -525,6 +545,14 @@ function openWebsocket(config, target) {
   const socket = createRealtimeSocket(config.token);
   websocket = socket;
   const context = sessionContext;
+  context.connection = connectionGate(context.controller.signal, (reason) => {
+    if (sessionContext !== context) return;
+    context.transportFailed = true;
+    websocketReady = false;
+    if (state.phase === "recording") state.stage = "recording-for-recovery";
+    trace("connection-unavailable", { reason, elapsedMs: Date.now() - context.startedAt });
+    try { socket.close(4003, "recovery requested"); } catch {}
+  });
   delivery = createDelivery(socket, (transport, message) => {
     if (context.recoveryType && !message.canceled) {
       void reportRecoveryOutcome(context.id, context.recoveryType, message.content, config.token)
@@ -534,25 +562,29 @@ function openWebsocket(config, target) {
   socket.binaryType = "arraybuffer";
   socket.onopen = () => {
     if (generation !== socketGeneration) return;
+    if (context.transportFailed || context.controller.signal.aborted) return;
+    trace("connection-open", { elapsedMs: Date.now() - context.startedAt });
     socket.send(JSON.stringify(startPayload(config, target)));
     state.stage = "waiting-ready";
   };
   socket.onmessage = (event) => {
     if (generation === socketGeneration) handleServerMessage(event);
   };
-  socket.onerror = () => {
-    if (generation === socketGeneration) {
-      if (state.phase === "recording") void stop();
-      else fail("Aqua realtime WebSocket connection failed");
+  const transportFailure = (reason) => {
+    if (generation !== socketGeneration || delivery?.claimed || context.transportFailed) return;
+    if (context.stopSent) fail(reason);
+    else {
+      context.connection.fail(reason);
+      // ready may already have settled successfully; remember later disconnects too.
+      context.transportFailed = true;
+      websocketReady = false;
+      if (state.phase === "recording") state.stage = "recording-for-recovery";
     }
   };
+  socket.onerror = () => transportFailure("Aqua WebSocket connection failed");
   socket.onclose = (event) => {
-    if (generation !== socketGeneration) return;
-    if (state.phase === "recording" || state.phase === "processing") {
-      const detail = event.reason ? `: ${event.reason}` : ` (code ${event.code})`;
-      if (state.phase === "recording") void stop();
-      else fail(`Aqua realtime WebSocket disconnected${detail}`);
-    }
+    trace("connection-closed", { code: event.code, sessionId: context.id, stopSent: context.stopSent });
+    transportFailure(`Aqua WebSocket disconnected (code ${event.code})`);
   };
 }
 
@@ -579,11 +611,13 @@ function start() {
   sessionConfig = config;
   sessionTarget = target;
   retryCount = 0;
-  sessionContext = { id: null, stopSent: false, recoveryType: null, controller: new AbortController() };
+  sessionContext = { startedAt: Date.now(), id: null, stopSent: false, recoveryType: null, controller: new AbortController() };
   trace("recording-start", { targetClass: state.targetClass, terminal: state.targetTerminal });
 
-  openWebsocket(config, target);
-  startRecorder();
+  try {
+    openWebsocket(config, target);
+    startRecorder();
+  } catch (error) { fail(`Could not start dictation: ${error.message}`, false); }
 }
 
 async function stop() {
@@ -605,20 +639,30 @@ async function stop() {
   state.phase = "processing";
   state.stage = "finalizing";
   try { capture?.kill("SIGINT"); } catch {}
-  if (capture) await capture.exited;
-  await drain;
+  if (capture) {
+    const shutdownTimer = setTimeout(() => { try { capture.kill("SIGKILL"); } catch {} }, 1500);
+    try { await capture.exited; await drain; } finally { clearTimeout(shutdownTimer); }
+  } else await drain;
   context.stopping = false;
   if (generation !== socketGeneration) return;
   recorder = null;
+  if (!sessionAudioBytes) return fail("No microphone audio was captured. Check your input in Settings.", false);
   if (pendingAudio.length) {
     sendAudio(pendingAudio);
     pendingAudio = Buffer.alloc(0);
+  }
+  if (!websocketReady && !context.transportFailed) {
+    state.stage = "waiting-ready";
+    await context.connection.ready;
+    if (generation !== socketGeneration || context.controller.signal.aborted) return;
   }
   flushAudio();
   if (!websocketReady || websocket?.readyState !== WebSocket.OPEN) return fail("Aqua realtime connection was not ready");
   try { websocket.send(JSON.stringify({ type: "stop_request", total_audio_chunks: audioCount })); }
   catch { return fail("Aqua realtime connection closed before stop_request"); }
   sessionContext.stopSent = true;
+  state.stage = "finalizing";
+  trace("stop-request", { chunks: audioCount, drainMs: Date.now() - state.processingStarted });
   finalTimer = setTimeout(() => fail("Aqua realtime finalization timed out"), finalizationTimeout(state.lastAudioMs));
 }
 
@@ -667,7 +711,18 @@ function tap() {
   }, DOUBLE_TAP_MS + 10);
 }
 
+let microphoneRefresh = null;
+function refreshMicrophones() {
+  if (microphoneRefresh) return microphoneRefresh;
+  microphoneRefresh = listMicrophones().then((devices) => {
+    state.microphones = devices; state.microphoneError = "";
+  }).catch((error) => { state.microphoneError = error.message; })
+    .finally(() => { microphoneRefresh = null; });
+  return microphoneRefresh;
+}
+
 function execute(command) {
+  if (command === "microphones") return void refreshMicrophones();
   if (command === "status" || command === "ping") return;
   if (command === "tap") return tap();
   if (command === "start") return start();
@@ -804,6 +859,7 @@ if (import.meta.main) {
   if (command) await runClient(command);
   else {
     startControlServer();
+    void refreshMicrophones();
     scanInputs();
     setInterval(scanInputs, 1000);
     if (readAquaToken(settings())) void refreshTranscriptCustomizations().catch((error) => trace("dictionary-sync-failed", { message: error.message }));

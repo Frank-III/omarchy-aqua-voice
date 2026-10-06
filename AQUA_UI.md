@@ -7,9 +7,10 @@ Static inspection target: Aqua Voice macOS 0.19.8, extracted Electron renderer a
 - Dictation lifecycle: idle, double-tap armed, recording, processing, pasted/copied, error.
 - Compact floating HUD, tray status, finish/cancel, paste-last, and focus-aware Hyprland paste.
 - Searchable language selection using Aqua's recovered language enum; selected languages are saved locally.
-- Privacy Mode and Continual Learning, including their mutual exclusion.
+- Privacy Mode. The retired Continual Learning control was removed to match Aqua 0.20.16.
 - Refined/skip-LLM transcription and Casual Messaging. These fields are sent in Aqua's realtime `start` payload.
 - Current model and realtime audio mode visibility.
+- PipeWire microphone selection by stable node name, with manual device refresh and capture-failure reporting.
 - Bounded local transcript history with audio/finalization timing and clear-all.
 - Aqua account, physical hotkey, backend, WebSocket, audio transport, and usage status.
 - Account-synced Dictionary list with add and confirmed-remove actions.

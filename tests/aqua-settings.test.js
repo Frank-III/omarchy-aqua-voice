@@ -11,6 +11,10 @@ test("personalization writes require a valid server response; failures preserve 
     await Bun.write(process.env.AQUA_SETTINGS_PATH, JSON.stringify({language:"en",savedLanguages:["en"],dictionary:["original"],replacements:[],customInstructions:"keep"}));
     setSetting("language", "ja");
     expect(readAquaSettings().language).toBe("ja");
+    setSetting("microphoneTarget", "test-usb-input");
+    expect(readAquaSettings().microphoneTarget).toBe("test-usb-input");
+    setSetting("microphoneTarget", "");
+    expect(readAquaSettings().microphoneTarget).toBe("");
     expect(readAquaSettings().savedLanguages).toEqual(["en", "ja"]);
     expect(() => setSetting("language", "invented")).toThrow();
     const body = customizationRequest({type:"replacement_upsert",replacement:{from:"aq",to:"Aqua"}});

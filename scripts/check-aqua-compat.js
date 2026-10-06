@@ -46,6 +46,10 @@ console.log(JSON.stringify({
   compatible: missing.length === 0,
   verificationScope: "Static anchor presence only; not a behavioral compatibility guarantee",
   sendsStreamingModelOverride: /streaming_model:/.test(main),
+  retiredSettings: {
+    memory: /delete \w+\.memory/.test(main),
+    promptSet: /delete \w+\.promptSet/.test(main),
+  },
   aquaVersion: version,
   checks,
   missing,

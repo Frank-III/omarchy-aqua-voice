@@ -45,6 +45,7 @@ Panel {
     if (svc && svc.setupRequired) return "Install the backend and login handler for your user account."
     if (!online) return "Start Aqua to enable realtime dictation"
     if (phase === "armed") return "Second tap starts hands-free dictation"
+    if (recording && svc && svc.stage === "recording-for-recovery") return "Connection unavailable · audio will upload when you finish"
     if (recording) return svc && svc.liveText ? svc.liveText : "Tap once when you are done"
     if (processing) return svc && svc.stage ? String(svc.stage).replace(/-/g, " ") : "Waiting for Aqua"
     if (complete) return svc && svc.completion !== "No text returned" && svc.completion !== "Too short" ? svc.latestTranscript : ""

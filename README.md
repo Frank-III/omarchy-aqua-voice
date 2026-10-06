@@ -33,10 +33,10 @@ Terminal alternative: `bash ~/.config/omarchy/plugins/frankmi.aqua-voice/install
 
 1. Open **Aqua Voice** from App Finder or the bar.
 2. Sign in under **Account**.
-3. Choose a shortcut under **Settings → Record hotkey**.
+3. Choose your microphone and shortcut under **Settings**.
 4. Double-tap to record; tap once to finish and paste. **Escape** cancels.
 
-The panel also has start/finish buttons. **Dictionary** manages words, replacements, and writing instructions; **History** keeps your last 20 dictations.
+The panel also has start/finish buttons. The microphone picker affects Aqua only; **System default** follows your desktop input. **Dictionary** manages words, replacements, and writing instructions; **History** keeps your last 20 dictations.
 
 Global shortcuts require read access to keyboard devices in `/dev/input/`. The `input` group can provide this, but grants access to other keyboard events too. Access is never granted automatically; panel buttons work without it.
 

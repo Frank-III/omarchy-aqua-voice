@@ -1,4 +1,4 @@
-# Aqua Voice 1.0.3 release checks
+# Aqua Voice 1.0.4 release checks
 
 ## Automated coverage
 
@@ -49,3 +49,9 @@ Advanced users migrating a patched installation can run `bash install.sh --impor
 - Before resubmission, perform browser sign-in with the new D-Bus callback and check the browser/portal path as well as the helper. The old submission was closed; use a new submission linking the credential remediation evidence.
 
 **Live portal handoff verified:** setup now reloads D-Bus activation and migrates only this plugin's stale portal handler entries. The installed portal → callback → API validation → keyring → backend restart path completed using the existing login. The desktop entry has no Exec fallback. Current Chromium's direct portal path is supported; generic xdg-open callback launch is not. A fresh provider sign-in remains a manual UI smoke test, distinct from the successful live credential handoff.
+
+## 1.0.4 compatibility and capture
+
+Retired memory/prompt-set fields are no longer sent. Settings exposes a PipeWire source picker that affects only Aqua. Microphone discovery runs once at backend startup and on explicit refresh, not on the status polling interval. A selected source that produces no audio fails with a clear error.
+
+Connection readiness has a single 10-second budget. Stopping early waits only for the remainder; readiness triggers queued-audio delivery before stop_request. An unavailable connection does not cut off an ongoing recording; retained audio is recovered when the user finishes. No new WebSocket replay is introduced. Timings for first audio, socket-open, ready, and stop_request are logged without credentials or transcript content. These changes require live microphone and delayed-connection smoke testing in addition to the isolated tests.

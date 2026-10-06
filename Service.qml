@@ -26,6 +26,9 @@ Item {
   property bool hotkeyReady: false
   property int hotkeyTaps: 0
   property string hotkeyDisplay: "Shift+Super+F23"
+  property string microphoneTarget: ""
+  property var microphones: []
+  property string microphoneError: ""
   property string microphone: "PipeWire default"
   property bool pasteWithShift: false
   property bool tokenPresent: false
@@ -44,7 +47,6 @@ Item {
   property string transcriptionModel: "avalon-v1.1"
   property string streamingMode: "never"
   property bool privacyMode: false
-  property bool memory: false
   property bool skipLlm: false
   property bool casualMessaging: false
   property int dictionaryCount: 0
@@ -75,6 +77,8 @@ Item {
       hotkeyReady = state.hotkeyReady === true
       hotkeyTaps = Number(state.hotkeyTaps || 0)
       hotkeyDisplay = String(state.hotkeyDisplay || "Shift+Super+F23")
+      microphones = state.microphones || []
+      microphoneError = String(state.microphoneError || "")
       microphone = String(state.microphone || "PipeWire default")
       pasteWithShift = state.pasteWithShift === true
       tokenPresent = state.tokenPresent === true
@@ -94,12 +98,12 @@ Item {
       replacements = config.replacements || []
       customInstructions = String(config.customInstructions || "")
       customizationSyncedAt = String(config.customizationSyncedAt || "")
+      microphoneTarget = String(config.microphoneTarget || "")
       language = String(config.language || "en")
       savedLanguages = Array.isArray(config.savedLanguages) ? config.savedLanguages : [language]
       transcriptionModel = String(config.transcriptionModel || "avalon-v1.1")
       streamingMode = String(config.streamingMode || "never")
       privacyMode = config.privacyMode === true
-      memory = config.memory === true
       skipLlm = config.skipLlm === true
       casualMessaging = config.casualMessaging === true
       dictionaryCount = Number(config.dictionaryCount || 0)

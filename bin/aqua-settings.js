@@ -28,7 +28,6 @@ let cachedToken = "";
 let cachedTokenAt = 0;
 const booleanSettings = new Set([
   "privacyMode",
-  "memory",
   "skipLlm",
   "casualMessaging",
 ]);
@@ -131,6 +130,7 @@ function publicSettings(config = readAquaSettings()) {
     ? config.dictionary.filter((word) => typeof word === "string" && word.trim()).slice(0, 800)
     : [];
   return {
+    microphoneTarget: typeof config.microphoneTarget === "string" ? config.microphoneTarget : "",
     language: String(config.language || "en"),
     supportedLanguages,
     savedLanguages: Array.isArray(config.savedLanguages)
@@ -139,7 +139,6 @@ function publicSettings(config = readAquaSettings()) {
     transcriptionModel: String(config.transcriptionModel || "avalon-v1.1"),
     streamingMode: String(config.streamingMode || "never"),
     privacyMode: config.privacyMode === true,
-    memory: config.memory === true,
     skipLlm: config.skipLlm === true,
     casualMessaging: config.casualMessaging === true,
     dictionary,
@@ -281,8 +280,9 @@ function setSetting(key, value) {
   if (booleanSettings.has(key)) {
     if (value !== "true" && value !== "false") throw new Error(`${key} must be true or false`);
     config[key] = value === "true";
-    if (key === "privacyMode" && config[key]) config.memory = false;
-    if (key === "memory" && config[key]) config.privacyMode = false;
+  } else if (key === "microphoneTarget") {
+    if (typeof value !== "string" || value.length > 512 || /[\r\n\0]/.test(value)) throw new Error("Invalid microphone target");
+    config.microphoneTarget = value;
   } else if (key === "language") {
     if (!supportedLanguageCodes.includes(value)) throw new Error("unsupported Aqua language");
     config.savedLanguages = [...new Set([...(Array.isArray(config.savedLanguages) ? config.savedLanguages : []), value])];
